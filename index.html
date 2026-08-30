@@ -92,6 +92,14 @@
   .dir-item .en{display:block;font-size:9px;color:#4f7186;font-family:ui-monospace,Consolas,monospace;
     margin-top:2px;letter-spacing:1px}
 
+  #kiosk-exit{position:fixed;top:14px;right:14px;z-index:40;display:none;background:var(--panel);
+    border:1px solid var(--line);border-radius:999px;color:#bfe9f7;padding:8px 16px;cursor:pointer;
+    font-size:12px;letter-spacing:2px;backdrop-filter:blur(8px);font-family:inherit}
+  body.kiosk #kiosk-exit{display:block}
+  body.kiosk #bar,body.kiosk #tip,body.kiosk #dirpanel,body.kiosk #worldbar,body.kiosk .hud-tr{display:none!important}
+  #acc-note{position:fixed;right:14px;bottom:8px;z-index:9;font-size:10px;color:#3d5a72;
+    letter-spacing:1px;pointer-events:none;font-family:ui-monospace,Consolas,monospace}
+
   #card{position:fixed;top:120px;right:20px;z-index:11;width:336px;
     background:var(--panel);border:1px solid var(--line);border-radius:14px;
     padding:18px 20px;backdrop-filter:blur(12px);
@@ -128,6 +136,8 @@
   #loader .fill{height:100%;width:0;background:linear-gradient(90deg,#1b9cc4,#3fe1ff);
     box-shadow:0 0 12px rgba(63,225,255,.8);transition:width .25s ease}
   #loader .msg{font-size:11px;color:#54788c;letter-spacing:2px}
+  #loader .acc{font-size:10px;color:#3d5a72;letter-spacing:1px;margin-top:4px;
+    font-family:ui-monospace,Consolas,monospace}
 
   @media (max-width:900px){
     .hud-tr{display:none}
@@ -153,6 +163,7 @@
 <div id="worldbar">
   <button class="wbtn on" data-world="gugong">🏯 紫禁城</button>
   <button class="wbtn" data-world="wall">🏔 万里长城</button>
+  <button class="wbtn" id="btn-lang">EN</button>
 </div>
 
 <div class="hud-tr" id="stats">
@@ -187,6 +198,12 @@
   <button class="btn" data-toggle="xray">线框<span class="k">X</span></button>
   <button class="btn on" data-toggle="labels">标注<span class="k">L</span></button>
   <div class="sep"></div>
+  <button class="btn on" data-light="night" title="夜">夜</button>
+  <button class="btn" data-light="dawn" title="晨">晨</button>
+  <button class="btn" data-light="day" title="昼">昼</button>
+  <div class="sep"></div>
+  <button class="btn" id="btn-kiosk">展陈</button>
+  <div class="sep"></div>
   <button class="btn" id="btn-dir">目录</button>
   <button class="btn" id="btn-shot" title="下载当前画面">📷</button>
   <button class="btn" id="btn-fs" title="全屏">⛶</button>
@@ -196,11 +213,15 @@
 
 <div id="tip">左键 旋转 · 滚轮 指针处缩放 · 右键 平移 · 双击 聚焦任意点<br>点击建筑/标注 看详情 · 目录 面板直达全部近景 · R 环绕当前目标</div>
 
+<button id="kiosk-exit">退出展陈 ✕</button>
+<div id="acc-note">本展项为艺术化数字示意 · 非测绘复原</div>
+
 <div id="loader">
   <div class="t1">紫禁城 · 长城</div>
   <div class="t2">CHINA HERITAGE DIGITAL TWIN</div>
   <div class="bar"><div class="fill" id="ld-fill"></div></div>
   <div class="msg" id="ld-msg">正在构建数字紫禁城与万里长城…</div>
+  <div class="acc">艺术化数字示意 · 非测绘复原 · Artistic digital interpretation</div>
 </div>
 
 <script>
@@ -218,8 +239,8 @@
 <script type="importmap">
 {
   "imports": {
-    "three": "https://registry.npmmirror.com/three/0.170.0/files/build/three.module.js",
-    "three/addons/": "https://registry.npmmirror.com/three/0.170.0/files/examples/jsm/"
+    "three": "./vendor/three.module.js",
+    "three/addons/": "./vendor/addons/"
   }
 }
 </script>
@@ -287,8 +308,8 @@ addEventListener('resize',()=>{
 });
 
 /* ═══════════ 灯光 ═══════════ */
-scene.add(new THREE.HemisphereLight(0x7fb2e8, 0x0b0f1a, .85));
-scene.add(new THREE.AmbientLight(0x1c2740, .68));
+const hemi=new THREE.HemisphereLight(0x7fb2e8, 0x0b0f1a, .85); scene.add(hemi);
+const amb=new THREE.AmbientLight(0x1c2740, .68); scene.add(amb);
 const sun = new THREE.DirectionalLight(0xffe8c0, 1.35); sun.position.set(340,460,260); scene.add(sun);
 sun.castShadow = true;
 sun.shadow.mapSize.set(4096,4096);
@@ -656,12 +677,12 @@ function roundedPath(t,w,h,r){
 function roundedShape(w,h,r){ return roundedPath(new THREE.Shape(),w,h,r); }
 
 /* ═══════════ 建筑构件 ═══════════ */
-function stairs(parent,wdt,topY,zEdge){
+function stairs(parent,wdt,topY,zEdge,cx=0){
   const n=Math.min(9,Math.max(3,Math.round(topY/.8))),sh=topY/n;
   for(let j=0;j<n;j++){
     const hgt=sh*(j+1);
     const m=new THREE.Mesh(new THREE.BoxGeometry(wdt,hgt,1.6),matMarble);
-    m.position.set(0,hgt/2, zEdge-.8-(n-1-j)*1.6);
+    m.position.set(cx,hgt/2, zEdge-.8-(n-1-j)*1.6);
     m.receiveShadow=true; // 小件不投影，节省阴影 pass
     parent.add(m);
   }
@@ -752,6 +773,13 @@ function interior(g,o,topY){
   const fm=matWith('fl'+w+'x'+d,()=>std({map:rep(texFloor,Math.round(w/6),Math.round(d/6)),roughness:.42,metalness:.12}));
   const fl=new THREE.Mesh(new THREE.PlaneGeometry(w-1.4,d-1.4),fm);
   fl.rotation.x=-Math.PI/2; fl.position.y=topY+.13; g.add(fl);
+  // 开间壁柱（内景殿身正面）
+  if(o.bays){
+    for(let i=0;i<=o.bays;i++){
+      const pil=new THREE.Mesh(new THREE.BoxGeometry(.42,bodyH-1,.18),matColumn);
+      pil.position.set(-w/2+i*w/o.bays,topY+(bodyH-1)/2,-d/2-.1); g.add(pil);
+    }
+  }
   // 天花：井字彩画 + 三重藻井
   const cm=matWith('ceil'+w+'x'+d,()=>std({map:rep(texCoffer,Math.max(2,Math.round(w/9)),Math.max(2,Math.round(d/9))),roughness:.8}));
   box(g,w-1,.5,d-1, 0,topY+bodyH-.55,0, cm,false);
@@ -828,6 +856,13 @@ function palace(o){
     bf.position.y=topY; g.add(bf); edged(bf);
     colRing(g,w,d,topY,bodyH);
     doors(g,w,d,topY,bodyH);
+    if(o.bays){ // 开间壁柱（表达柱网节奏）
+      for(let i=0;i<=o.bays;i++){
+        const px=-w/2+i*w/o.bays;
+        box(g,.42,bodyH-1,.42, px,topY+(bodyH-1)/2,-d/2-.32, matColumn,false);
+        box(g,.42,bodyH-1,.42, px,topY+(bodyH-1)/2, d/2+.32, matColumn,false);
+      }
+    }
   }
   eaveDecor(g,w,d,topY+bodyH-1.3,o.dougong);
   let rt=topY+bodyH;
@@ -1146,14 +1181,17 @@ const matPlaza2  =std({map:rep(texPlaza,7,9),roughness:.9,color:0xd8e4f4});
   const mkTier=(w,d,y)=>{const f=sh(new THREE.Mesh(hipFrustumGeo(w,d,w-2.8,d-2.8,3),matMarbleBig));
     f.position.y=y; t.add(f); edged(f);};
   mkTier(150,262,0); mkTier(138,250,3); mkTier(126,238,6);
-  stairs(t,40,9,-131); stairs(t,22,9,131); stairs(t,18,9,-131);
+  // 三路台阶 + 中路御路斜石（丹陛）
+  stairs(t,13,9,-131,-16); stairs(t,13,9,-131,16); stairs(t,22,9,131); stairs(t,10,9,-131);
+  const yulu=new THREE.Mesh(new RoundedBoxGeometry(6.5,.55,16.2,2,.2),matMarble);
+  yulu.position.set(0,4.25,-138.4); yulu.rotation.x=.615; yulu.castShadow=true; t.add(yulu);
   balustrade(t,123.2,235.2,9); balustrade(t,135.2,247.2,6);
   city.add(t);
-  const td=palace({w:64,d:34,bodyH:12,tiers:0,double:true,roofH:10.5,y:9,z:-115,
+  const td=palace({w:64,d:34,bodyH:12,tiers:0,double:true,roofH:10.5,y:9,z:-115,bays:11,
     interior:true,throne:true,plaque:true,doorW:10,doorH:7.6,dougong:true,bm:matWallBig});
   td.userData.poi=3; td.userData.world='gugong'; city.add(td);
   const zh=palace({w:28,d:28,bodyH:9,tiers:0,pyr:true,roofH:11,y:9,z:-45,dougong:true}); zh.userData.poi=4; zh.userData.world='gugong'; city.add(zh);
-  const bh=palace({w:54,d:26,bodyH:11,tiers:0,double:true,roofH:9.5,y:9,z:25,dougong:true,bm:matWall}); bh.userData.poi=5; bh.userData.world='gugong'; city.add(bh);
+  const bh=palace({w:54,d:26,bodyH:11,tiers:0,double:true,roofH:9.5,y:9,z:25,dougong:true,bays:9,bm:matWall}); bh.userData.poi=5; bh.userData.world='gugong'; city.add(bh);
   // 铜缸陈设 + 香炉
   bronzeVat(-64,9,-152); bronzeVat(64,9,-152); bronzeVat(-64,9,18); bronzeVat(64,9,18);
   censer(-30,9,-143); censer(30,9,-143);
@@ -1173,7 +1211,7 @@ const matPlaza2  =std({map:rep(texPlaza,7,9),roughness:.9,color:0xd8e4f4});
   stairs(t,26,6,-96); stairs(t,18,6,96);
   balustrade(t,79.2,179.2,6);
   city.add(t);
-  const qg=palace({w:46,d:24,bodyH:10,tiers:0,roofH:8.5,y:6,z:165,
+  const qg=palace({w:46,d:24,bodyH:10,tiers:0,roofH:8.5,y:6,z:165,bays:9,
     interior:true,throne:true,plaque:true,doorW:7.5,doorH:6.2,dougong:true});
   qg.userData.poi=7; qg.userData.world='gugong'; city.add(qg);
   const jt=palace({w:24,d:24,bodyH:8,tiers:0,pyr:true,roofH:10,y:6,z:215,dougong:true}); jt.userData.poi=8; jt.userData.world='gugong'; city.add(jt);
@@ -1225,7 +1263,11 @@ huabiao(-58,0,-552); huabiao(58,0,-552);
     const m=new THREE.Mesh(new THREE.SphereGeometry(r,24,16,0,Math.PI*2,0,Math.PI/2),matHill);
     m.scale.y=.58; m.position.x=hx; hill.add(m);
   });
-  hill.add(palace({w:16,d:16,bodyH:6,tiers:0,pyr:true,roofH:8,x:0,y:41,z:0}));
+  hill.add(palace({w:16,d:16,bodyH:6,tiers:0,pyr:true,roofH:8,x:0,y:41,z:0}));    // 万春亭
+  hill.add(palace({w:11,d:11,bodyH:5,tiers:0,pyr:true,roofH:6,x:-30,y:27,z:-4})); // 周赏亭
+  hill.add(palace({w:11,d:11,bodyH:5,tiers:0,pyr:true,roofH:6,x:30,y:27,z:-4}));  // 辑芳亭
+  hill.add(palace({w:10,d:10,bodyH:4,tiers:0,pyr:true,roofH:5,x:-58,y:28,z:-9})); // 观妙亭
+  hill.add(palace({w:10,d:10,bodyH:4,tiers:0,pyr:true,roofH:5,x:58,y:28,z:-9}));  // 富览亭
   hill.userData={poi:18,world:'gugong'};
   city.add(hill);
 }
@@ -1524,8 +1566,9 @@ function terrainH(x,z){
     ps[i*3]=Math.cos(a)*r; ps[i*3+1]=60+Math.random()*1000; ps[i*3+2]=Math.sin(a)*r;
   }
   const sg=new THREE.BufferGeometry(); sg.setAttribute('position',new THREE.BufferAttribute(ps,3));
-  scene.add(new THREE.Points(sg,new THREE.PointsMaterial({color:0x9fdcff,size:1.8,
-    sizeAttenuation:false,transparent:true,opacity:.7,toneMapped:false})));
+  const starsP=new THREE.Points(sg,new THREE.PointsMaterial({color:0x9fdcff,size:1.8,
+    sizeAttenuation:false,transparent:true,opacity:.7,toneMapped:false}));
+  scene.add(starsP); fx.stars=starsP;
   // 夜空明月（两世界共享，不受雾衰减）
   const moon=new THREE.Mesh(new THREE.SphereGeometry(46,24,18),
     new THREE.MeshBasicMaterial({color:0xdceafb,fog:false,toneMapped:false}));
@@ -1612,6 +1655,41 @@ const POIS_W=[
     return {p:[g.x+36,g.y+10,g.z+28],t:[g.x,g.y+9,g.z]};})(),
   desc:'瓮城内部视角：四面城墙合围，敌军破门外门即入包围圈，守军可自垛口四面齐射。中国城防"瓮中捉鳖"的经典设计。'},
 ];
+const POI_EN={
+ gugong:[
+  "The main gate, completed in 1420. Five tower pavilions crown the U-shaped platform; imperial edicts were proclaimed and victorious armies presented here.",
+  "Five marble bridges cross the Inner Golden Water river, graded by rank for the emperor, princes and officials — an allegory of the five virtues. Every baluster post is modelled.",
+  "The ceremonial gate to the Outer Court, where Ming emperors held 'court at the gate' audiences on the vast square before it.",
+  "Popularly the Golden Throne Hall — the largest surviving timber hall in China. Enthronements, royal weddings and field-marshal appointments were held here. First built 1420, rebuilt 1695. Step inside for the gilded throne under the caisson ceiling.",
+  "A square hall with a pyramidal gilded roof, where the emperor rested and rehearsed rites before the grand ceremonies in the Hall of Supreme Harmony.",
+  "Hosted the final imperial examinations from 1789, and New Year banquets for frontier lords. Double-eaved hip roof on the shared marble terrace.",
+  "Main gate of the Inner Court. Emperor Kangxi held 'court at the gate' sessions here; the council desks stood beside it.",
+  "The emperor's residence and study. The secret succession edict was hidden behind the 'Upright and Bright' plaque after 1723. Enter for the throne hall interior.",
+  "Named for 'union of heaven and earth'. The empress received birthday congratulations here, and the 25 imperial seals were kept beside the clepsydra.",
+  "The empress's residence under the Ming; under the Qing a shamanist ritual hall and the imperial wedding chamber — Kangxi, Tongzhi and Guangxu all married here.",
+  "The imperial garden closing the central axis: ancient cypresses, the Qian'an Hall of the Dark Warrior, and the Hill of Accumulated Elegance with its viewing pavilion.",
+  "The north gate, its drums and bells marking dawn and dusk. The Palace Museum plaque was hung here in 1925; Jingshan Hill rises just outside.",
+  "Four corner towers with 'nine beams, eighteen columns and seventy-two ridges' — the most photographed silhouette of the palace.",
+  "A close-up of the upper eave: ten immortal-and-beast figures on the ridge, double-tier dougong brackets carrying the eave, and glazed tiles laid along the concave roof curve.",
+  "Terrace furnishings: a three-legged gilt censer, bronze turtle and crane incense burners for ceremony smoke, and gilded fire-fighting vats. The sundial stands east, the grain measure west.",
+  "Consorts' residences — one walled courtyard per palace with its moon-gate, mirrored by the Six Western Palaces to form the 'three palaces, six courts'.",
+  "Eastern Outer Court hall: the crown prince's residence in the Ming, lecture hall of the classicist academics in the Qing, famed for its crab-apple blossoms.",
+  "Western Outer Court hall, home of the Imperial Printing Office whose 'Wuying editions' are famed; Li Zicheng's brief enthronement rite was held here in 1644.",
+  "Wanchun Pavilion crowns Jingshan Hill, the highest point of the central axis — from here the golden roofs of the Forbidden City spread at your feet."
+ ],
+ wall:[
+  "The gate fortress of Badaling, first built in 1505: outer gate, walled barbican and gate tower sealing the pass — 'the peril lies not at Juyongguan but at Badaling'.",
+  "A two-storey hollow watchtower, garrisoned by dozens of men with grain and arms — the backbone of the Ming border defence rebuilt under Qi Jiguang.",
+  "The steepest climb of the line, nearly 45 degrees. 'He who has never been to the Great Wall is not a true man.'",
+  "The highest watchtower of the Badaling stretch — the best vantage over the wall winding along the ridges.",
+  "Smoke by day, fire by night: beacon relays carried military news a thousand li within a single day and night.",
+  "Legend holds that Beijing could be glimpsed from this highest eastern tower on clear days — hence 'Watching-the-Capital Tower'.",
+  "Walk the ramp the soldiers walked: a stone-paved way between parapets, rising and dipping with the ridge like a wave frozen in masonry.",
+  "Crenels and merlons staggered with the slope, built to command the approaches below — defence sculpted into the wall's own silhouette.",
+  "The gilt braziers' fire flickering in the night wind. One smoke column raised, and the frontier knew — the telegraph of the pre-modern world.",
+  "Inside the barbican: breach the outer gate and you stand in a killing box raked from the parapets on four sides — the classic 'turtle-catch' of Chinese fortification."
+ ]
+};
 const WORLDS={
   gugong:{label:'紫禁城',group:city,pois:POIS_G,slab:()=>fx.slabG,
     sub:'FORBIDDEN CITY · 3D DIGITAL TWIN',
@@ -1648,7 +1726,8 @@ function openPOI(i){
   document.getElementById('c-name').textContent=p.name;
   document.getElementById('c-en').textContent=p.en;
   document.getElementById('c-year').textContent=p.year;
-  document.getElementById('c-desc').textContent=p.desc;
+  document.getElementById('c-desc').textContent=
+    (LANG==='en'&&POI_EN[activeWorld]&&POI_EN[activeWorld][i]) ? POI_EN[activeWorld][i] : p.desc;
   document.getElementById('c-geo').textContent=WORLDS[activeWorld].geo;
   const ib=document.getElementById('c-inner');
   if(p.inner){ ib.style.display=''; ib.onclick=()=>{ poiLayer.classList.add('dim'); flyTo(p.inner.p,p.inner.t,2200); }; }
@@ -1669,7 +1748,7 @@ function fillDir(){
   dirpanel.innerHTML='<h4>'+WORLDS[activeWorld].label+' · 视点目录（'+WORLDS[activeWorld].pois.length+'）</h4>';
   WORLDS[activeWorld].pois.forEach((p,i)=>{
     const d=document.createElement('div'); d.className='dir-item';
-    d.innerHTML=p.name+'<span class="en">'+p.en+'</span>';
+    d.innerHTML=(LANG==='en'?p.en:p.name)+'<span class="en">'+p.en+'</span>';
     d.addEventListener('click',()=>{ openPOI(i); dirpanel.classList.remove('show'); });
     dirpanel.appendChild(d);
   });
@@ -1697,6 +1776,107 @@ orbitBtn.addEventListener('click',()=>{
   document.querySelector('[data-toggle="rotate"]').classList.add('on');
 });
 
+/* ═══════════ 光照预设（夜/晨/昼） ═══════════ */
+const LIGHTS={
+  night:{bg:0x04070f,fog:[0x04070f,520,3400],hemi:.85,amb:.68,sun:[0xffe8c0,1.35],fill:.55,fill2:.32,moonL:.55,moon:1,stars:.7,bloom:.75,expo:1.12},
+  dawn:{bg:0x0d1626,fog:[0x0d1626,430,3100],hemi:1.05,amb:.8,sun:[0xffd2a0,1.7],fill:.7,fill2:.45,moonL:.12,moon:0,stars:.25,bloom:.6,expo:1.06},
+  day:{bg:0x24384f,fog:[0x24384f,700,4200],hemi:1.3,amb:.95,sun:[0xfff3e0,2.1],fill:.85,fill2:.6,moonL:0,moon:0,stars:0,bloom:.4,expo:1}
+};
+let lightMode='night';
+function applyLights(name){
+  const L=LIGHTS[name]||LIGHTS.night;
+  scene.background.set(L.bg);
+  scene.fog.color.set(L.fog[0]); scene.fog.near=L.fog[1]; scene.fog.far=L.fog[2];
+  hemi.intensity=L.hemi; amb.intensity=L.amb;
+  sun.intensity=L.sun[1]; sun.color.set(L.sun[0]);
+  fill.intensity=L.fill; fill2.intensity=L.fill2; moonLight.intensity=L.moonL;
+  fx.moon.visible=!!L.moon;
+  fx.stars.material.opacity=.7*L.stars; fx.stars.visible=L.stars>0;
+  bloom.strength=L.bloom; renderer.toneMappingExposure=L.expo;
+  document.querySelectorAll('[data-light]').forEach(b=>b.classList.toggle('on',b.dataset.light===name));
+  lightMode=name;
+}
+document.querySelectorAll('[data-light]').forEach(b=>
+  b.addEventListener('click',()=>applyLights(b.dataset.light)));
+
+/* ═══════════ 双语（中/EN） ═══════════ */
+let LANG='zh';
+const UI={
+ zh:{dir:'目录',tour:'巡航',rotate:'旋转',shadow:'光影',scan:'扫描',xray:'线框',labels:'标注',
+     inner:'◎ 进入殿内 · 内景视角',orbit:'◎ 环绕此建筑 · R',
+     note:'本展项为艺术化数字示意 · 非测绘复原',
+     tip:'左键 旋转 · 滚轮 指针处缩放 · 右键 平移 · 双击 聚焦任意点<br>点击建筑/标注 看详情 · 目录 面板直达全部近景 · R 环绕当前目标'},
+ en:{dir:'INDEX',tour:'TOUR',rotate:'ORBIT',shadow:'SHADOW',scan:'SCAN',xray:'X-RAY',labels:'LABELS',
+     inner:'◎ ENTER THE HALL',orbit:'◎ ORBIT THIS BUILDING · R',
+     note:'Artistic digital interpretation — not a survey reconstruction',
+     tip:'Drag orbit · Wheel zoom at pointer · Right-drag pan · Double-click to focus<br>Click buildings or markers for details · INDEX lists every close-up · R orbit'}
+};
+function applyLang(l){
+  LANG=l;
+  const set=(sel,txt)=>{const b=document.querySelector(sel); if(b) b.firstChild.textContent=txt+' ';};
+  set('[data-toggle="tour"]',UI[l].tour); set('[data-toggle="rotate"]',UI[l].rotate);
+  set('[data-toggle="shadow"]',UI[l].shadow); set('[data-toggle="scan"]',UI[l].scan);
+  set('[data-toggle="xray"]',UI[l].xray); set('[data-toggle="labels"]',UI[l].labels);
+  set('#btn-dir',UI[l].dir);
+  document.getElementById('c-inner').textContent=UI[l].inner;
+  document.getElementById('c-orbit').textContent=UI[l].orbit;
+  document.getElementById('tip').innerHTML=UI[l].tip;
+  document.getElementById('acc-note').textContent=UI[l].note;
+  document.getElementById('btn-lang').textContent=(l==='zh'?'EN':'中');
+  if(dirpanel.classList.contains('show')) fillDir();
+}
+document.getElementById('btn-lang').addEventListener('click',()=>applyLang(LANG==='zh'?'en':'zh'));
+
+/* ═══════════ 展陈模式（Kiosk 循环 + 看门狗） ═══════════ */
+let kiosk=false, kioskSeq=0, lastActive=performance.now(), lastRafT=performance.now();
+['pointerdown','wheel','keydown','touchstart'].forEach(ev=>
+  addEventListener(ev,()=>{ lastActive=performance.now(); },{passive:true}));
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+async function kioskLoop(my){
+  const alive=()=>kiosk&&my===kioskSeq;
+  while(alive()){
+    closeCard(); poiLayer.classList.remove('dim');
+    const views=WORLDS[activeWorld].views;
+    const first=views[Object.keys(views)[0]];
+    flyTo(first.p,first.t,2600);
+    await wait(4600); if(!alive())return;
+    for(let i=0;i<WORLDS[activeWorld].pois.length;i++){
+      if(!alive())return;
+      if(performance.now()-lastActive<8000){ await wait(2000); continue; }  // 观众操作中 → 暂缓
+      openPOI(i);
+      await wait(7600); if(!alive())return;
+    }
+    if(!alive())return;
+    setWorld(activeWorld==='gugong'?'wall':'gugong');
+    await wait(5200);
+  }
+}
+function enterKiosk(){
+  if(kiosk) return;
+  kiosk=true; const my=++kioskSeq;
+  document.body.classList.add('kiosk');
+  try{ document.documentElement.requestFullscreen?.().catch(()=>{}); }catch(e){}
+  applyLights('night');
+  setWorld('gugong');
+  kioskLoop(my);
+}
+function exitKiosk(){
+  kiosk=false; kioskSeq++;
+  document.body.classList.remove('kiosk');
+  if(document.fullscreenElement) document.exitFullscreen().catch(()=>{});
+  closeCard();
+}
+document.getElementById('btn-kiosk').addEventListener('click',enterKiosk);
+document.getElementById('kiosk-exit').addEventListener('click',exitKiosk);
+// 看门狗：kiosk 下页面报错或渲染冻结 → 自动恢复（30s 宽限，避免与后台节流误判）
+setInterval(()=>{
+  if(!kiosk) return;
+  if(document.hidden) return;
+  const frozen = performance.now()-lastRafT>30000;
+  const broken = window.__errs && window.__errs.length>2;
+  if(frozen||broken) location.reload();
+},6000);
+
 /* ═══════════ 世界切换 ═══════════ */
 function rebuildViewButtons(){
   const holder=document.getElementById('viewbtns'); holder.innerHTML='';
@@ -1718,11 +1898,11 @@ function setWorld(k){
   fx.slabG.visible=(k==='gugong'); fx.slabW.visible=(k==='wall'); fx.slab=fx.slabW.visible?fx.slabW:fx.slabG;
   document.getElementById('logo').textContent=WORLDS[k].label;
   document.getElementById('sub').textContent=WORLDS[k].sub;
-  document.querySelectorAll('.wbtn').forEach(b=>b.classList.toggle('on',b.dataset.world===k));
+  document.querySelectorAll('.wbtn[data-world]').forEach(b=>b.classList.toggle('on',b.dataset.world===k));
   buildMarkers(); rebuildViewButtons();
   const v=WORLDS[k].views['全景']; flyTo(v.p,v.t,2400);
 }
-document.querySelectorAll('.wbtn').forEach(b=>
+document.querySelectorAll('.wbtn[data-world]').forEach(b=>
   b.addEventListener('click',()=>setWorld(b.dataset.world)));
 
 /* ═══════════ 巡航 / 飞行 / 交互 ═══════════ */
@@ -1852,6 +2032,7 @@ const tmpV=new THREE.Vector3();
 
 function animate(){
   requestAnimationFrame(animate);
+  lastRafT=performance.now();
   const dt=Math.min(clock.getDelta(),.05), t=clock.elapsedTime;
 
   if(growing){
@@ -1937,6 +2118,7 @@ window.__gw=gw; window.__city=city;   // 调试钩子
 window.__r3={renderer,scene,camera,controls,composer};
 window.__THREE=THREE;
 window.__animate=animate; // 手动步进（rAF 被系统冻结时用于验证）
+window.__dbg=()=>({aw:activeWorld,wk:Object.keys(WORLDS),has:!!WORLDS[activeWorld],wpois:WORLDS[activeWorld]?WORLDS[activeWorld].pois.length:-1});
 
 /* ═══════════ 入场 ═══════════ */
 buildMarkers(); rebuildViewButtons();
