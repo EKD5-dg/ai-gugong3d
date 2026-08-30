@@ -1162,15 +1162,32 @@ const GW={path:[],towers:[],beacons:[]};
     perp.push(new THREE.Vector3(-t.z,0,t.x));
   }
   function ribbon(samples, baseHalf, topHalf, getTopH, embed, mat){
-    const pos=[],uv=[],idx=[]; const m=samples.length;
+    // 自适应细分：相邻采样高差>6 时插值加密，陡坡不再出现长条斜面
+    const S=[],PR=[];
+    for(let i=0;i<samples.length;i++){
+      if(i<samples.length-1){
+        const p=samples[i], q=samples[i+1], pr=perp[i], pr2=perp[i+1];
+        const steps=Math.max(1,Math.ceil(Math.abs(q.y-p.y)/6));
+        for(let k=0;k<steps;k++){
+          const t=k/steps;
+          S.push(new THREE.Vector3().lerpVectors(p,q,t));
+          PR.push(new THREE.Vector3().lerpVectors(pr,pr2,t).normalize());
+        }
+      }else{
+        S.push(samples[i].clone()); PR.push(perp[i].clone());
+      }
+    }
+    const pos=[],uv=[],idx=[]; const m=S.length;
+    let acc=0;
     for(let i=0;i<m;i++){
-      const p=samples[i], Pr=perp[i], th=getTopH(i);
+      if(i>0) acc+=S[i].distanceTo(S[i-1]);
+      const p=S[i], Pr=PR[i], th=getTopH(i);
       const yb=p.y-embed, yt=p.y+th;
       pos.push(p.x+Pr.x*baseHalf,yb,p.z+Pr.z*baseHalf);   // 0 外底
       pos.push(p.x-Pr.x*baseHalf,yb,p.z-Pr.z*baseHalf);   // 1 内底
       pos.push(p.x+Pr.x*topHalf, yt,p.z+Pr.z*topHalf);    // 2 外顶
       pos.push(p.x-Pr.x*topHalf, yt,p.z-Pr.z*topHalf);    // 3 内顶
-      const u=i*10/6;
+      const u=acc/6;
       uv.push(u,0, u,0, u,th/6, u,th/6);
       if(i<m-1){
         const a=i*4,b=a+4;
@@ -1195,7 +1212,7 @@ const GW={path:[],towers:[],beacons:[]};
   }
   {
     const merG=new THREE.BoxGeometry(.95,1,.5);
-    const cap=Math.ceil(n*4)+8;
+    const cap=(n-1)*8+8;
     const imM=new THREE.InstancedMesh(merG,matGWMerlon,cap);
     const M=new THREE.Matrix4(), qs=new THREE.Quaternion(), up=new THREE.Vector3(0,1,0), S1=new THREE.Vector3();
     let mi=0;
@@ -1630,6 +1647,7 @@ function animate(){
 }
 animate();
 window.__APP_READY__=true;
+window.__gw=gw; window.__city=city;   // 调试钩子
 
 /* ═══════════ 入场 ═══════════ */
 buildMarkers(); rebuildViewButtons();
