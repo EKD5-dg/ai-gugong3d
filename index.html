@@ -612,6 +612,8 @@ const throneStone= matWith('tstone',()=>std({color:0xcabfa6,map:rep(texStone,3,3
 
 const edgeMat=new THREE.LineBasicMaterial({color:0x59e2ff,transparent:true,opacity:.42,toneMapped:false});
 const edgeMatG=new THREE.LineBasicMaterial({color:0x2e8db0,transparent:true,opacity:.4,toneMapped:false}); // 长城夜景专用暗描边（弱化水晶感）
+const COLLIDERS=[];                                 // 第一人称碰撞盒 {x,z,hw,hd}
+function addCollider(x,z,hw,hd){COLLIDERS.push({x,z,hw,hd});}
 
 /* ═══════════ 几何工具（含 UV，让砖瓦纹理落地） ═══════════ */
 function edged(mesh,m){
@@ -1511,8 +1513,8 @@ function terrainH(x,z){
       uv.push(u,0, u,0, u,vt, u,vt);
       if(i<m-1){
         const a=i*4,b=a+4;
-        idx.push(a,b,a+2, a,a+2,b+2,          // 外侧坡面（收分）
-                 a+1,a+3,b+3, a+1,b+3,b+1,    // 内侧坡面
+        idx.push(a,b,b+2, a,b+2,a+2,          // 外侧坡面（收分）
+                 a+1,b+1,b+3, a+1,b+3,b+1,    // 内侧坡面
                  a+2,b+2,b+3, a+2,b+3,a+3);   // 顶部走道面
       }
     }
@@ -1522,7 +1524,7 @@ function terrainH(x,z){
     g.setIndex(idx); g.computeVertexNormals();
     gw.add(new THREE.Mesh(g,mat));
   }
-  ribbon(SI,PRI,THI, 5.6,3.7, matGWRibbon);   // 主体：底边逐顶点贴地形的挡土墙
+  ribbon(SI,PRI,THI, 5.6,3.7, undefined, matGWRibbon);   // 主体：底边逐顶点贴地形的挡土墙
   { // 马道铺装（平滑斜坡石板面）
     const matGWDeck=matWith('gwdeck',()=>std({map:rep(texPave,1,1),roughness:.92,side:THREE.DoubleSide}));
     const pos=[],uv=[],idx=[]; let acc=0; const m=SI.length;
@@ -1542,7 +1544,7 @@ function terrainH(x,z){
   for(const side of [1,-1]){                        // 两侧女墙
     const parS=SI.map((p,i)=>new THREE.Vector3(
       p.x+PRI[i].x*3.2*side, p.y+THI[i]-.25, p.z+PRI[i].z*3.2*side));
-    ribbon(parS,PRI,SI.map(()=>1.15), .55,.5, matGWRibbon, 1.4);
+    ribbon(parS,PRI,SI.map(()=>1.15), .55,.5, .55, matGWRibbon);
   }
   {  // 垛口：沿细分采样每 2.4 单位摆放（段内插值），Y 严格贴合女墙顶
     const merG=new THREE.BoxGeometry(.95,1,.5);
@@ -2001,6 +2003,9 @@ function enterFPS(){
   const d=new THREE.Vector3(); camera.getWorldDirection(d);
   fps.yaw=Math.atan2(-d.x,-d.z);
   fps.pitch=Math.asin(THREE.MathUtils.clamp(d.y,-1,1));
+  fps.y=groundAt(fps.x,fps.z)+fps.eye;          // 落到地面眼高
+  camera.position.set(fps.x,fps.y,fps.z);
+  camera.rotation.set(fps.pitch,fps.yaw,0,'YXZ');
   controls.enabled=false;
   poiLayer.classList.add('dim');
   document.body.classList.add('fps');
@@ -2125,6 +2130,7 @@ const raycaster=new THREE.Raycaster(), ndc=new THREE.Vector2();
 let downXY=null;
 renderer.domElement.addEventListener('pointerdown',e=>downXY=[e.clientX,e.clientY]);
 renderer.domElement.addEventListener('pointerup',e=>{
+  if(fps.on) return;                     // 步行模式：点击不触发飞行/卡片
   if(!downXY||Math.hypot(e.clientX-downXY[0],e.clientY-downXY[1])>6) return;
   if(e.target!==renderer.domElement) return;
   ndc.set(e.clientX/innerWidth*2-1, -(e.clientY/innerHeight)*2+1);
@@ -2141,7 +2147,7 @@ renderer.domElement.addEventListener('pointerup',e=>{
 });
 // 双击：聚焦任意位置（点到建筑则打开其卡片）
 renderer.domElement.addEventListener('dblclick',e=>{
-  if(e.target!==renderer.domElement) return;
+  if(fps.on||e.target!==renderer.domElement) return;
   ndc.set(e.clientX/innerWidth*2-1, -(e.clientY/innerHeight)*2+1);
   raycaster.setFromCamera(ndc,camera);
   const root=WORLDS[activeWorld].group;
@@ -2243,7 +2249,7 @@ function animate(){
     b.li.intensity=1.8+f*.8;
   });
 
-  // 第一人称步行
+  // 第一人称步行（接管相机，OrbitControls 完全让位）
   if(fps.on){
     const k=fps.keys, sp=(k.has('shift')?17:6.5)*dt;
     const fx=-Math.sin(fps.yaw), fz=-Math.cos(fps.yaw);
@@ -2254,6 +2260,14 @@ function animate(){
     if(k.has('d')||k.has('arrowright')){mx+=rx;mz+=rz;}
     if(k.has('a')||k.has('arrowleft')){mx-=rx;mz-=rz;}
     if(mx||mz){const L=Math.hypot(mx,mz);fps.x+=mx/L*sp;fps.z+=mz/L*sp;}
+    // 碰撞：主建筑体推挤出局（沿最浅穿透轴）
+    for(const cd of COLLIDERS){
+      const dx=fps.x-cd.x, dz=fps.z-cd.z, ex=cd.hw+.6, ez=cd.hd+.6;
+      if(Math.abs(dx)<ex&&Math.abs(dz)<ez){
+        if(ex-Math.abs(dx)<ez-Math.abs(dz)) fps.x=cd.x+Math.sign(dx||1)*ex;
+        else fps.z=cd.z+Math.sign(dz||1)*ez;
+      }
+    }
     const lim=activeWorld==='wall'?[1150,800]:[400,540];
     fps.x=THREE.MathUtils.clamp(fps.x,-lim[0],lim[0]);
     fps.z=THREE.MathUtils.clamp(fps.z,-lim[1],activeWorld==='wall'?lim[1]:470);
@@ -2261,9 +2275,9 @@ function animate(){
     fps.y+=(gy-fps.y)*Math.min(1,dt*10);
     camera.position.set(fps.x,fps.y,fps.z);
     camera.rotation.set(fps.pitch,fps.yaw,0,'YXZ');
+  }else{
+    controls.update();   // 第一人称时跳过：update 会覆盖步行视角
   }
-
-  controls.update();
 
   // POI 标注投影（标注关闭时跳过）
   if(state.labels){
