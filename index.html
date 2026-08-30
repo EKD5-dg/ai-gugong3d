@@ -266,8 +266,8 @@ addEventListener('resize',()=>{
 });
 
 /* ═══════════ 灯光 ═══════════ */
-scene.add(new THREE.HemisphereLight(0x7fb2e8, 0x0b0f1a, .6));
-scene.add(new THREE.AmbientLight(0x1c2740, .5));
+scene.add(new THREE.HemisphereLight(0x7fb2e8, 0x0b0f1a, .85));
+scene.add(new THREE.AmbientLight(0x1c2740, .68));
 const sun = new THREE.DirectionalLight(0xffe8c0, 1.35); sun.position.set(340,460,260); scene.add(sun);
 sun.castShadow = true;
 sun.shadow.mapSize.set(4096,4096);
@@ -277,6 +277,7 @@ sun.shadow.camera.near=60;  sun.shadow.camera.far=1700;
 sun.shadow.bias=-0.0006; sun.shadow.normalBias=.8;
 const fill = new THREE.DirectionalLight(0x9fd0ff, .55); fill.position.set(60,160,-520); scene.add(fill);
 const fill2 = new THREE.DirectionalLight(0xbfd8ff, .32); fill2.position.set(-120,180,560); scene.add(fill2); // 北向补光：照亮背面/内墙
+const moonLight = new THREE.DirectionalLight(0xbfd0e8, .55); moonLight.position.set(-1250,520,-1350); scene.add(moonLight); // 月光：勾出远山形体
 const rim = new THREE.DirectionalLight(0x3fd8ff, .32);  rim.position.set(-380,300,-360); scene.add(rim);
 
 /* ═══════════ 程序化纹理工厂（每一块砖 / 每一片瓦都由此生成） ═══════════ */
@@ -418,6 +419,18 @@ const texPlaza=canvasTex(512,512,(g,w,h)=>{
     g.fillStyle=`rgb(${(24*l)|0},${(35*l)|0},${(60*l)|0})`;
     g.fillRect(x*s+3,y*s+3,s-6,s-6);
     g.fillStyle='rgba(130,190,230,.05)'; g.fillRect(x*s+3,y*s+3,s-6,3);
+  }
+});
+// 长城马道浅灰石板（顶面可读性）
+const texPave=canvasTex(256,256,(g,w,h)=>{
+  g.fillStyle='#4a525b'; g.fillRect(0,0,w,h);
+  const s=64;
+  for(let y=0;y<h/s;y++)for(let x=0;x<w/s;x++){
+    const l=.85+Math.random()*.3;
+    g.fillStyle=`rgb(${(138*l)|0},${(146*l)|0},${(154*l)|0})`;
+    g.fillRect(x*s+2,y*s+2,s-4,s-4);
+    g.fillStyle='rgba(255,255,255,.08)'; g.fillRect(x*s+2,y*s+2,s-4,2);
+    g.fillStyle='rgba(0,0,0,.28)'; g.fillRect(x*s+2,y*s+s-6,s-4,4);
   }
 });
 // "正大光明"匾
@@ -1135,21 +1148,35 @@ function terrainH(x,z){
   h+=42*Math.exp(-((z-ridgeZ(x)+330)**2)/(2*130*130))*Math.max(0,Math.sin(x*.003+1.2));
   h+=36*Math.exp(-((z-ridgeZ(x)-360)**2)/(2*120*120))*Math.max(0,Math.sin(x*.0026+4.2));
   h+=24*Math.sin(x*.021+z*.017)+13*Math.sin(x*.043-z*.031)+6*Math.sin(x*.09+z*.07);
-  // 边缘跌落入台，避免地形切平
-  const fx=Math.min(1,Math.max(0,(1300-Math.abs(x))/170));
+  // 边缘收进台面以下（盆景式收边，低角度不再见悬浮碎片）
+  const fx=Math.min(1,Math.max(0,(1300-Math.abs(x))/80));
   const fz=Math.min(1,Math.max(0,(850-Math.abs(z))/140));
-  return h*(.12+.88*Math.min(fx,fz));
+  const f=Math.min(fx,fz);
+  return h*f-10*(1-f);
 }
 const GW={path:[],towers:[],beacons:[]};
 {
   // ── 山体地形（顶点色 + 低多边形科技风）──
-  const seg=150,rw=2600,rd=1700;
-  const tgeo=new THREE.PlaneGeometry(rw,rd,seg,100); tgeo.rotateX(-Math.PI/2);
+  const sx=300,sz=200,rw=2600,rd=1700;
+  const tgeo=new THREE.PlaneGeometry(rw,rd,sx,sz); tgeo.rotateX(-Math.PI/2);
   const pa=tgeo.attributes.position, colors=new Float32Array(pa.count*3);
+  // 高度场：网格节点预采样 + 双线性插值采样器（渲染网格与墙体的唯一高度真源）
+  const HN=(sx+1)*(sz+1), hs=new Float32Array(HN);
+  for(let j=0;j<=sz;j++)for(let i2=0;i2<=sx;i2++)
+    hs[j*(sx+1)+i2]=terrainH(-rw/2+i2*rw/sx, -rd/2+j*rd/sz)-1.5;
+  GW.gridH=(x,z)=>{
+    const gx=Math.min(sx,Math.max(0,(x+rw/2)*sx/rw)), gz=Math.min(sz,Math.max(0,(z+rd/2)*sz/rd));
+    const i0=Math.min(sx-1,Math.floor(gx)), j0=Math.min(sz-1,Math.floor(gz));
+    const tx=gx-i0, tz=gz-j0, r=sx+1;
+    const a=hs[j0*r+i0],b=hs[j0*r+i0+1],c=hs[(j0+1)*r+i0],d=hs[(j0+1)*r+i0+1];
+    return a*(1-tx)*(1-tz)+b*tx*(1-tz)+c*(1-tx)*tz+d*tx*tz;
+  };
   const cA=new THREE.Color(0x0c2a1c),cB=new THREE.Color(0x143020),cC=new THREE.Color(0x27313b),
         cD=new THREE.Color(0x3d4650),cE=new THREE.Color(0x707c88),cc=new THREE.Color();
   for(let i=0;i<pa.count;i++){
-    const x=pa.getX(i),z=pa.getZ(i),h=terrainH(x,z)-1.5;
+    const x=pa.getX(i),z=pa.getZ(i);
+    const gx=Math.round((x+rw/2)*sx/rw), gz=Math.round((z+rd/2)*sz/rd);
+    const h=hs[gz*(sx+1)+gx];                     // 顶点高度=采样器节点值
     pa.setY(i,h);
     const k=Math.max(0,Math.min(1,h/165));
     if(k<.18)cc.lerpColors(cA,cB,k/.18);
@@ -1160,7 +1187,8 @@ const GW={path:[],towers:[],beacons:[]};
   }
   tgeo.setAttribute('color',new THREE.BufferAttribute(colors,3));
   tgeo.computeVertexNormals();
-  const terrain=new THREE.Mesh(tgeo,new THREE.MeshStandardMaterial({vertexColors:true,roughness:1}));
+  const terrain=new THREE.Mesh(tgeo,new THREE.MeshStandardMaterial({vertexColors:true,roughness:1,
+    emissive:0x10151d,emissiveIntensity:.75}));
   gw.add(terrain);
   // 山坡散树（实例化，一处 draw call，给群山比例参照）
   {
@@ -1171,7 +1199,7 @@ const GW={path:[],towers:[],beacons:[]};
     while(placed<N&&guard++<4000){
       const x=-1150+rnd()*2300, z=-750+rnd()*1500;
       if(Math.abs(z-ridgeZ(x))<48) continue;
-      const h=terrainH(x,z);
+      const h=GW.gridH(x,z);
       if(h<3||h>70) continue;
       const s=.7+rnd()*1.2;
       S.set(s,s,s);
@@ -1191,7 +1219,7 @@ const GW={path:[],towers:[],beacons:[]};
 
   // ── 沿山脊采样长城路径 ──
   for(let x=-1160;x<=1160;x+=5){
-    const z=ridgeZ(x),y=terrainH(x,z);
+    const z=ridgeZ(x),y=GW.gridH(x,z);
     GW.path.push(new THREE.Vector3(x,y,z));
   }
   const P=GW.path,n=P.length;
@@ -1209,7 +1237,7 @@ const GW={path:[],towers:[],beacons:[]};
     const p=P[i], thi=wallTop(i);
     if(i<n-1){
       const q=P[i+1], pr=perp[i], pr2=perp[i+1], thj=wallTop(i+1);
-      const steps=Math.max(1,Math.ceil(Math.abs(q.y-p.y)/3));
+      const steps=1; // 路径已按5单位采样，马道保持平滑斜坡（不再细分出台阶）
       for(let k=0;k<steps;k++){
         const t=k/steps;
         SI.push(new THREE.Vector3().lerpVectors(p,q,t));
@@ -1221,19 +1249,27 @@ const GW={path:[],towers:[],beacons:[]};
     }
   }
   // 条带：S 采样 / PR 横向法线 / TH 每采样顶高
-  function ribbon(S,PR,TH,baseHalf,topHalf,embed,mat){
+  // 主体墙（embed 省略时）：底边逐顶点取 terrainH——地面在哪墙根在哪，陡坡不再悬空穿帮
+  function ribbon(S,PR,TH,baseHalf,topHalf,mat,embed){
     const pos=[],uv=[],idx=[]; const m=S.length;
     let acc=0;
     for(let i=0;i<m;i++){
       if(i>0) acc+=S[i].distanceTo(S[i-1]);
       const p=S[i], Pr=PR[i], th=TH[i];
-      const yb=p.y-embed, yt=p.y+th;
-      pos.push(p.x+Pr.x*baseHalf,yb,p.z+Pr.z*baseHalf);   // 0 外底
-      pos.push(p.x-Pr.x*baseHalf,yb,p.z-Pr.z*baseHalf);   // 1 内底
+      const yt=p.y+th;
+      let ybO,ybI;
+      if(embed===undefined){
+        ybO=GW.gridH(p.x+Pr.x*baseHalf,p.z+Pr.z*baseHalf)-.7;
+        ybI=GW.gridH(p.x-Pr.x*baseHalf,p.z-Pr.z*baseHalf)-.7;
+      }else{
+        ybO=ybI=p.y-embed;
+      }
+      pos.push(p.x+Pr.x*baseHalf,ybO,p.z+Pr.z*baseHalf);  // 0 外底（贴地）
+      pos.push(p.x-Pr.x*baseHalf,ybI,p.z-Pr.z*baseHalf);  // 1 内底（贴地）
       pos.push(p.x+Pr.x*topHalf, yt,p.z+Pr.z*topHalf);    // 2 外顶
       pos.push(p.x-Pr.x*topHalf, yt,p.z-Pr.z*topHalf);    // 3 内顶
-      const u=acc/6;
-      uv.push(u,0, u,0, u,th/6, u,th/6);
+      const u=acc/6, vt=(yt-Math.max(ybO,ybI))/6;
+      uv.push(u,0, u,0, u,vt, u,vt);
       if(i<m-1){
         const a=i*4,b=a+4;
         idx.push(a,b,a+2, a,a+2,b+2,          // 外侧坡面（收分）
@@ -1247,11 +1283,27 @@ const GW={path:[],towers:[],beacons:[]};
     g.setIndex(idx); g.computeVertexNormals();
     gw.add(new THREE.Mesh(g,mat));
   }
-  ribbon(SI,PRI,THI, 5.6,3.7, 4.6, matGWRibbon);   // 主体（深埋基础，急弯处不悬空）
+  ribbon(SI,PRI,THI, 5.6,3.7, matGWRibbon);   // 主体：底边逐顶点贴地形的挡土墙
+  { // 马道铺装（平滑斜坡石板面）
+    const matGWDeck=matWith('gwdeck',()=>std({map:rep(texPave,1,1),roughness:.92,side:THREE.DoubleSide}));
+    const pos=[],uv=[],idx=[]; let acc=0; const m=SI.length;
+    for(let i=0;i<m;i++){
+      if(i>0) acc+=SI[i].distanceTo(SI[i-1]);
+      const p=SI[i], Pr=PRI[i], y=p.y+THI[i]+.06;
+      pos.push(p.x+Pr.x*3.5,y,p.z+Pr.z*3.5,  p.x-Pr.x*3.5,y,p.z-Pr.z*3.5);
+      uv.push(acc/8,0, acc/8,1);
+      if(i<m-1){ const a=i*2,b=a+2; idx.push(a,b,b+1, a,b+1,a+1); }
+    }
+    const g=new THREE.BufferGeometry();
+    g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+    g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
+    g.setIndex(idx); g.computeVertexNormals();
+    gw.add(new THREE.Mesh(g,matGWDeck));
+  }
   for(const side of [1,-1]){                        // 两侧女墙
     const parS=SI.map((p,i)=>new THREE.Vector3(
       p.x+PRI[i].x*3.2*side, p.y+THI[i]-.25, p.z+PRI[i].z*3.2*side));
-    ribbon(parS,PRI,SI.map(()=>1.15), .55,.5, .6, matGWRibbon);
+    ribbon(parS,PRI,SI.map(()=>1.15), .55,.5, matGWRibbon, .55);
   }
   {  // 垛口：沿细分采样每 2.4 单位摆放（段内插值），Y 严格贴合女墙顶
     const merG=new THREE.BoxGeometry(.95,1,.5);
@@ -1697,6 +1749,7 @@ animate();
 window.__APP_READY__=true;
 window.__gw=gw; window.__city=city;   // 调试钩子
 window.__r3={renderer,scene,camera,controls,composer};
+window.__THREE=THREE;
 
 /* ═══════════ 入场 ═══════════ */
 buildMarkers(); rebuildViewButtons();
