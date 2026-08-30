@@ -1997,13 +1997,17 @@ function enterFPS(){
   if(fly){fly=null;controls.enabled=false;}
   fpsSaved={pos:camera.position.clone(),target:controls.target.clone()};
   fps.on=true;
-  const lim=activeWorld==='wall'?[-1150,1150,-800,800]:[-400,400,-540,470];
-  fps.x=THREE.MathUtils.clamp(camera.position.x,lim[0],lim[1]);
-  fps.z=THREE.MathUtils.clamp(camera.position.z,lim[2],lim[3]);
-  const d=new THREE.Vector3(); camera.getWorldDirection(d);
-  fps.yaw=Math.atan2(-d.x,-d.z);
-  fps.pitch=Math.asin(THREE.MathUtils.clamp(d.y,-1,1));
-  fps.y=groundAt(fps.x,fps.z)+fps.eye;          // 落到地面眼高
+  // 按世界给定合理入场点（不从飞行相机取，避免山体/空中/远处）
+  if(activeWorld==='wall'){
+    const p=GW.path[Math.floor(GW.path.length*.3)]||GW.path[40];
+    fps.x=p.x; fps.z=p.z;
+    fps.yaw=Math.PI/2;
+  }else{
+    fps.x=0; fps.z=-470;   // 午门内广场面向太和门
+    fps.yaw=Math.PI;       // 面朝 +z（北→太和门）
+  }
+  fps.pitch=0;
+  fps.y=groundAt(fps.x,fps.z)+fps.eye;
   camera.position.set(fps.x,fps.y,fps.z);
   camera.rotation.set(fps.pitch,fps.yaw,0,'YXZ');
   controls.enabled=false;
