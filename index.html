@@ -1598,6 +1598,7 @@ function terrainH(x,z){
     box(g,1.4,4.8,3.6, -9.2,4.6,0, matDoor,false);
     box(g,1.4,4.8,3.6,  9.2,4.6,0, matDoor,false);
     g.userData={poi,world:'wall'};
+    addCollider(p.x,p.z,11,11);
     gw.add(g); GW.towers.push({name,pos:p.clone().add(new THREE.Vector3(0,22,0)),group:g});
     return g;
   }
@@ -2015,13 +2016,14 @@ function enterFPS(){
   camera.position.set(fps.x,fps.y,fps.z);
   camera.rotation.set(fps.pitch,fps.yaw,0,'YXZ');
   controls.enabled=false;
-  poiLayer.classList.add('dim');
+  poiLayer.style.display='none';  // 第一人称完全隐藏标注
   document.body.classList.add('fps');
 }
 function exitFPS(){
   if(!fps.on) return;
   fps.on=false; fps.keys.clear(); fpsDrag=null;
   document.body.classList.remove('fps');
+  poiLayer.style.display=state.labels?'':'none';
   poiLayer.classList.remove('dim');
   camera.position.copy(fpsSaved.pos);
   controls.target.copy(fpsSaved.target);
@@ -2279,6 +2281,11 @@ function animate(){
     const lim=activeWorld==='wall'?[1150,800]:[400,540];
     fps.x=THREE.MathUtils.clamp(fps.x,-lim[0],lim[0]);
     fps.z=THREE.MathUtils.clamp(fps.z,-lim[1],activeWorld==='wall'?lim[1]:470);
+    // 长城：限位在马道宽度内（不掉落两侧）
+    if(activeWorld==='wall'){
+      const rz=ridgeZ(fps.x);
+      if(Math.abs(fps.z-rz)>3.8) fps.z=rz+Math.sign(fps.z-rz)*3.8;
+    }
     const gy=groundAt(fps.x,fps.z)+fps.eye;
     fps.y+=(gy-fps.y)*Math.min(1,dt*10);
     camera.position.set(fps.x,fps.y,fps.z);
