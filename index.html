@@ -80,6 +80,18 @@
   @keyframes poiPulse{0%{box-shadow:0 0 0 0 rgba(63,225,255,.55)}70%{box-shadow:0 0 0 12px rgba(63,225,255,0)}100%{box-shadow:0 0 0 0 rgba(63,225,255,0)}}
   #pois.dim .poi{opacity:0 !important;pointer-events:none}
 
+  /* ── 视点目录面板 ── */
+  #dirpanel{position:fixed;top:72px;left:20px;z-index:12;width:252px;max-height:72vh;overflow:auto;
+    background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px;display:none;
+    backdrop-filter:blur(10px);box-shadow:0 10px 40px rgba(0,0,0,.45)}
+  #dirpanel.show{display:block}
+  #dirpanel h4{font-size:11px;letter-spacing:3px;color:#6fb6cf;margin:4px 4px 8px;font-weight:600}
+  .dir-item{padding:7px 10px;border:1px solid transparent;border-radius:8px;cursor:pointer;
+    font-size:12.5px;color:#c9e7f2;letter-spacing:1px;transition:all .15s}
+  .dir-item:hover{border-color:var(--line);background:rgba(63,225,255,.08);color:#fff}
+  .dir-item .en{display:block;font-size:9px;color:#4f7186;font-family:ui-monospace,Consolas,monospace;
+    margin-top:2px;letter-spacing:1px}
+
   #card{position:fixed;top:120px;right:20px;z-index:11;width:336px;
     background:var(--panel);border:1px solid var(--line);border-radius:14px;
     padding:18px 20px;backdrop-filter:blur(12px);
@@ -161,6 +173,7 @@
   <div class="year" id="c-year"></div>
   <div class="desc" id="c-desc"></div>
   <div id="c-inner" class="inner-btn" style="display:none">◎ 进入殿内 · 内景视角</div>
+  <div id="c-orbit" class="inner-btn" style="display:none;margin-top:8px;background:linear-gradient(92deg,#f2d693,#e8c06a)">◎ 环绕此建筑 · R</div>
   <div class="geo" id="c-geo"></div>
 </div>
 
@@ -173,9 +186,15 @@
   <button class="btn on" data-toggle="scan">扫描</button>
   <button class="btn" data-toggle="xray">线框<span class="k">X</span></button>
   <button class="btn on" data-toggle="labels">标注<span class="k">L</span></button>
+  <div class="sep"></div>
+  <button class="btn" id="btn-dir">目录</button>
+  <button class="btn" id="btn-shot" title="下载当前画面">📷</button>
+  <button class="btn" id="btn-fs" title="全屏">⛶</button>
 </div>
 
-<div id="tip">左键拖拽 旋转 · 滚轮 缩放 · 右键 平移 · 点击建筑/标注 查看详情<br>空格 巡航 · 数字键 切换机位 · X 线框 · 进入大殿可看金砖藻井宝座</div>
+<div id="dirpanel"></div>
+
+<div id="tip">左键 旋转 · 滚轮 指针处缩放 · 右键 平移 · 双击 聚焦任意点<br>点击建筑/标注 看详情 · 目录 面板直达全部近景 · R 环绕当前目标</div>
 
 <div id="loader">
   <div class="t1">紫禁城 · 长城</div>
@@ -254,6 +273,7 @@ controls.enableDamping = true; controls.dampingFactor = .06;
 controls.minDistance = 3; controls.maxDistance = 2200;
 controls.maxPolarAngle = 1.53; controls.minPolarAngle = .03;
 controls.autoRotateSpeed = .55;
+controls.zoomToCursor = true;   // 滚轮缩放到指针处
 
 const composer = new EffectComposer(renderer,_msaaRT);
 composer.addPass(new RenderPass(scene,camera));
@@ -1183,8 +1203,8 @@ city.add(gate({x:-376,z:-150,w:48,d:20,h:10,rot:Math.PI/2,towerH:5}));
     vi++;
   }
 });
-city.add(palace({w:56,d:26,bodyH:9,tiers:1,roofH:6.5,x: 245,z:-235,dougong:true})); compound( 245,-235,56,26);
-city.add(palace({w:56,d:26,bodyH:9,tiers:1,roofH:6.5,x:-245,z:-235,dougong:true})); compound(-245,-235,56,26);
+const whd=palace({w:56,d:26,bodyH:9,tiers:1,roofH:6.5,x: 245,z:-235,dougong:true}); whd.userData={poi:16,world:'gugong'}; city.add(whd); compound( 245,-235,56,26);
+const wyd=palace({w:56,d:26,bodyH:9,tiers:1,roofH:6.5,x:-245,z:-235,dougong:true}); wyd.userData={poi:17,world:'gugong'}; city.add(wyd); compound(-245,-235,56,26);
 // —— 树木（御花园松柏 / 庭院阔叶）
 for(let gx=-3;gx<=3;gx++) for(let gz=0;gz<5;gz++){
   const jx=(Math.sin(gx*12.9+gz*7.7)*.5+.5)*8-4, jz=(Math.cos(gx*5.3+gz*3.1)*.5+.5)*8-4;
@@ -1206,6 +1226,7 @@ huabiao(-58,0,-552); huabiao(58,0,-552);
     m.scale.y=.58; m.position.x=hx; hill.add(m);
   });
   hill.add(palace({w:16,d:16,bodyH:6,tiers:0,pyr:true,roofH:8,x:0,y:41,z:0}));
+  hill.userData={poi:18,world:'gugong'};
   city.add(hill);
 }
 
@@ -1225,7 +1246,7 @@ function terrainH(x,z){
   const f=Math.min(fx,fz);
   return h*f-10*(1-f);
 }
-const GW={path:[],towers:[],beacons:[]};
+  const GW={path:[],towers:[],beacons:[],beaconGroups:[]};
 {
   // ── 山体地形（顶点色 + 低多边形科技风）──
   const sx=300,sz=200,rw=2600,rd=1700;
@@ -1414,7 +1435,7 @@ const GW={path:[],towers:[],beacons:[]};
   }
 
   // ── 敌楼（每 200 单位一座，收分梯台身）──
-  function tower(idx,name){
+  function tower(idx,name,poi){
     const p=P[idx], g=new THREE.Group(); g.position.copy(p);
     const h=10.5+((idx*7)%3);
     const body=new THREE.Mesh(hipFrustumGeo(17,17,13,13,h),matGWTower);
@@ -1429,6 +1450,7 @@ const GW={path:[],towers:[],beacons:[]};
     box(g,3.6,4.6,1.2, 0,4.2, 8.4, matDoor,false);
     box(g,1.2,4.6,3.6, -8.4,4.2,0, matDoor,false);
     box(g,1.2,4.6,3.6,  8.4,4.2,0, matDoor,false);
+    g.userData={poi,world:'wall'};
     gw.add(g); GW.towers.push({name,pos:p.clone().add(new THREE.Vector3(0,20,0)),group:g});
     return g;
   }
@@ -1449,12 +1471,13 @@ const GW={path:[],towers:[],beacons:[]};
     // 瓮城两翼
     box(g,20,10,12, -32,5,0, matGWTower);
     box(g,20,10,12,  32,5,0, matGWTower);
+    g.userData={poi:0,world:'wall'};
     gw.add(g);
     GW.guanAddr=p.clone();
   }
-  tower(quarter,'北四楼');
-  tower(half,'北八楼');
-  tower(threeQ,'望京楼');
+  tower(quarter,'北四楼',1);
+  tower(half,'北八楼',3);
+  tower(threeQ,'望京楼',5);
   // 好汉坡：取中段最陡处
   let steepest=quarter,steep=0;
   for(let i=quarter;i<half;i++){
@@ -1474,7 +1497,8 @@ const GW={path:[],towers:[],beacons:[]};
       new THREE.MeshBasicMaterial({color:0xff8c3a,toneMapped:false}));
     glow.position.y=18.8; g.add(glow);
     const li=new THREE.PointLight(0xff8c3a,2.2,90,1.2); li.position.y=20.5; g.add(li);
-    GW.beacons.push({glow,li,y0:18.8});
+    g.userData={poi:8,world:'wall'};
+    GW.beacons.push({glow,li,y0:18.8}); GW.beaconGroups.push(g);
     gw.add(g);
   });
 }
@@ -1536,6 +1560,18 @@ const POIS_G=[
   desc:'紫禁城北门，旧设钟鼓晨昏报时。1925 年故宫博物院成立时于门上悬挂"故宫博物院"匾额，今为观众参观出口，门外即是景山。'},
  {name:'角楼',en:'CORNER TOWER',year:'明永乐十八年 · 1420',pos:[376,32,-480],view:{p:[498,48,-596],t:[376,16,-480]},
   desc:'城墙四隅各有一座角楼，三重檐、七十二条脊，"九梁十八柱七十二条脊"的精巧木构，轮廓如亭如阁，是紫禁城最上镜的标志之一。'},
+ {name:'檐角斗拱',en:'DOUGONG CLOSE-UP',year:'重檐庑殿 · 檐角',pos:[31,38,-130],view:{p:[46,34,-102],t:[31,34,-127]},
+  desc:'太和殿上层檐角特写：垂脊列脊兽，双层斗拱出跳承托檐口，飞檐翘角指天。琉璃瓦垄沿举折曲线铺展，檐下彩画枋层层出挑。'},
+ {name:'陈设 · 铜炉',en:'BRONZE CENSERS',year:'鎏金陈设 · 台基之上',pos:[30,13,-143],view:{p:[16,13,-156],t:[30,10,-143]},
+  desc:'台基南沿陈设一组：三足双耳鎏金香炉、昂首铜龟与铜鹤（大典焚香之用）、防火鎏金铜缸。日晷居东南、嘉量居西南，皆为国之量器。'},
+ {name:'东六宫院落',en:'EASTERN PALACES',year:'明永乐 · 内廷东六宫',pos:[210,12,190],view:{p:[166,18,138],t:[210,9,190]},
+  desc:'嫔妃居所，一宫一院、围合而居。朱红院墙、月门石拱，内设正殿配殿。与西六宫对称分布，构成内廷"三宫六院"格局。'},
+ {name:'文华殿',en:'HALL OF LITERARY GLORY',year:'明永乐 · 外朝东路',pos:[245,14,-235],view:{p:[208,14,-208],t:[245,10,-235]},
+  desc:'外朝东路殿宇，明代太子东宫，清代经筵讲学之所。殿前海棠旧植闻名，北侧文渊阁为皇家藏书楼。'},
+ {name:'武英殿',en:'HALL OF MARTIAL VALOR',year:'明永乐 · 外朝西路',pos:[-245,14,-235],view:{p:[-208,14,-208],t:[-245,10,-235]},
+  desc:'外朝西路殿宇。清代武英殿修书处开殿版书之先河，存世"武英殿本"即源于此；李自成即位仪式亦在此举行。'},
+ {name:'景山万春亭',en:'WANCHUN PAVILION',year:'清乾隆十五年 · 1750',pos:[0,54,660],view:{p:[2,68,586],t:[0,46,660]},
+  desc:'景山之巅，北京中轴线制高点。登亭南望，紫禁城金顶琉璃一览无余——此刻脚下，正是你眼前的整座数字孪生城。'},
 ];
 const P0=GW.path?GW.path[2]:new THREE.Vector3();
 const POIS_W=[
@@ -1559,15 +1595,31 @@ const POIS_W=[
  {name:'望京楼',en:'JING-WATCH TOWER',year:'明 · 制高点',pos:GW.towers[2]?(GW.towers[2].pos.toArray()):[0,40,0],
   view:{p:[(GW.towers[2]?.pos.x||0)+80,(GW.towers[2]?.pos.y||40)+30,(GW.towers[2]?.pos.z||0)-70],t:GW.towers[2]?.pos.toArray()||[0,20,0]},
   desc:'长城东段制高点的敌楼，天气晴好时据传可遥望北京城轮廓，故名望京。墙体灰砖白灰，历经六百年风雨而砖缝犹紧。'},
+ {name:'马道近景',en:'RAMMAK WAY',year:'登城步道',pos:(()=>{const p=GW.path[GW.haohan||80];return [p.x,p.y+11,p.z];})(),
+  view:(()=>{const p=GW.path[GW.haohan||80];
+    return {p:[p.x-26,p.y+20,p.z-30],t:[p.x+18,p.y+7,p.z+16]};})(),
+  desc:'贴着马道看长城：脚下是浅灰石板墁地，两侧女墙垛口高低错落。墙体下宽上窄、灰砖白缝，随山势起伏如波浪。'},
+ {name:'垛口特写',en:'CRENELATION',year:'雉堞 · 高低错落',pos:(()=>{const p=GW.path[(GW.haohan||80)+40]||GW.path[80];return [p.x,p.y+12,p.z];})(),
+  view:(()=>{const p=GW.path[(GW.haohan||80)+40]||GW.path[80];
+    return {p:[p.x-7,p.y+14,p.z-9],t:[p.x+7,p.y+8,p.z+7]};})(),
+  desc:'垛口特写：外檐口砌望砖一层层叠出，高低随山势微差。从垛口外望，关外山川尽收眼底——这正是"据险制塞"的用意。'},
+ {name:'烽火台火盆',en:'BEACON BRAZIER',year:'昼烟夜火',pos:(()=>{const b=GW.beaconGroups&&GW.beaconGroups[0];return b?[b.position.x,b.position.y+20,b.position.z]:[0,60,0];})(),
+  view:(()=>{const b=GW.beaconGroups&&GW.beaconGroups[0]?GW.beaconGroups[0].position:new THREE.Vector3();
+    return {p:[b.x+17,b.y+28,b.z+24],t:[b.x,b.y+18,b.z]};})(),
+  desc:'火盆特写：鎏金铜盆燃狼烟，火光在夜风中明灭。一炷狼烟起，千里军情达——冷兵器时代的"光纤通信"。'},
+ {name:'瓮城之内',en:'INSIDE THE BARBICAN',year:'瓮中捉鳖 · 防御设计',pos:(()=>{const g=GW.guanAddr||GW.path[2];return [g.x+22,g.y+14,g.z-6];})(),
+  view:(()=>{const g=GW.guanAddr||GW.path[2];
+    return {p:[g.x+36,g.y+10,g.z+28],t:[g.x,g.y+9,g.z]};})(),
+  desc:'瓮城内部视角：四面城墙合围，敌军破门外门即入包围圈，守军可自垛口四面齐射。中国城防"瓮中捉鳖"的经典设计。'},
 ];
 const WORLDS={
   gugong:{label:'紫禁城',group:city,pois:POIS_G,slab:()=>fx.slabG,
     sub:'FORBIDDEN CITY · 3D DIGITAL TWIN',
     geo:'E 116.397° · N 39.917° · 北京中轴线',
     views:{'全景':{p:[430,330,660],t:[0,0,-30]},'俯瞰':{p:[.5,730,.5],t:[0,0,0]},
-      '午门':{p:[0,28,-600],t:[0,26,-480]},'三大殿':{p:[0,42,-235],t:[0,26,-110]},
-      '后三宫':{p:[0,48,55],t:[0,16,205]},'御花园':{p:[0,54,305],t:[0,10,395]},
-      '角楼':{p:[500,52,-602],t:[376,14,-480]},'殿内景':{p:[0,9.5,-126],t:[0,8,-104]}}},
+      '午门':{p:[0,24,-562],t:[0,22,-480]},'三大殿':{p:[30,38,-206],t:[0,24,-112]},
+      '后三宫':{p:[0,30,92],t:[0,14,205]},'御花园':{p:[0,26,338],t:[0,10,390]},
+      '角楼':{p:[432,30,-540],t:[376,14,-480]},'殿内景':{p:[0,12.8,-124.5],t:[0,9.5,-103.5]}}},
   wall:{label:'万里长城',group:gw,pois:POIS_W,slab:()=>fx.slabW,
     sub:'GREAT WALL · 3D DIGITAL TWIN',
     geo:'N 40.359° · E 116.021° · 北京 · 燕山山脉',
@@ -1601,6 +1653,7 @@ function openPOI(i){
   const ib=document.getElementById('c-inner');
   if(p.inner){ ib.style.display=''; ib.onclick=()=>{ poiLayer.classList.add('dim'); flyTo(p.inner.p,p.inner.t,2200); }; }
   else ib.style.display='none';
+  document.getElementById('c-orbit').style.display='';
   card.classList.add('show');
   poiEls.forEach((e,j)=>e.classList.toggle('active',j===i));
   flyTo(p.view.p,p.view.t,1900);
@@ -1609,6 +1662,40 @@ function closeCard(){ activePOI=-1; card.classList.remove('show');
   poiEls.forEach(e=>e.classList.remove('active')); }
 document.getElementById('c-close').addEventListener('click',closeCard);
 window.__openPOI=openPOI; // 调试/外部联动钩子
+
+/* ── 视点目录面板 ── */
+const dirpanel=document.getElementById('dirpanel');
+function fillDir(){
+  dirpanel.innerHTML='<h4>'+WORLDS[activeWorld].label+' · 视点目录（'+WORLDS[activeWorld].pois.length+'）</h4>';
+  WORLDS[activeWorld].pois.forEach((p,i)=>{
+    const d=document.createElement('div'); d.className='dir-item';
+    d.innerHTML=p.name+'<span class="en">'+p.en+'</span>';
+    d.addEventListener('click',()=>{ openPOI(i); dirpanel.classList.remove('show'); });
+    dirpanel.appendChild(d);
+  });
+}
+document.getElementById('btn-dir').addEventListener('click',()=>{
+  if(dirpanel.classList.contains('show')) dirpanel.classList.remove('show');
+  else { fillDir(); dirpanel.classList.add('show'); }
+});
+/* ── 截图下载 / 全屏 ── */
+document.getElementById('btn-shot').addEventListener('click',()=>{
+  composer.render();
+  const a=document.createElement('a');
+  a.download=(WORLDS[activeWorld].label)+'-snapshot.png';
+  a.href=renderer.domElement.toDataURL('image/png');
+  a.click();
+});
+document.getElementById('btn-fs').addEventListener('click',()=>{
+  if(document.fullscreenElement) document.exitFullscreen();
+  else document.documentElement.requestFullscreen();
+});
+/* ── 卡片内"环绕此建筑" ── */
+const orbitBtn=document.getElementById('c-orbit');
+orbitBtn.addEventListener('click',()=>{
+  controls.autoRotate=true; state.rotate=true;
+  document.querySelector('[data-toggle="rotate"]').classList.add('on');
+});
 
 /* ═══════════ 世界切换 ═══════════ */
 function rebuildViewButtons(){
@@ -1624,6 +1711,7 @@ function rebuildViewButtons(){
 function setWorld(k){
   if(k===activeWorld) return;
   tourSet(false); closeCard(); poiLayer.classList.remove('dim');
+  if(dirpanel.classList.contains('show')) fillDir();
   activeWorld=k;
   WORLDS.gugong.group.visible=(k==='gugong');
   WORLDS.wall.group.visible=(k==='wall');
@@ -1723,7 +1811,28 @@ renderer.domElement.addEventListener('pointerup',e=>{
   }
   closeCard();
 });
+// 双击：聚焦任意位置（点到建筑则打开其卡片）
+renderer.domElement.addEventListener('dblclick',e=>{
+  if(e.target!==renderer.domElement) return;
+  ndc.set(e.clientX/innerWidth*2-1, -(e.clientY/innerHeight)*2+1);
+  raycaster.setFromCamera(ndc,camera);
+  const root=WORLDS[activeWorld].group;
+  const hits=raycaster.intersectObjects(root.children,true);
+  for(const h of hits){
+    let o=h.object;
+    while(o&&o.userData.world!==activeWorld&&o!==root) o=o.parent;
+    if(o&&o.userData.world===activeWorld&&o.userData.poi!==undefined){ openPOI(o.userData.poi); return; }
+  }
+  if(hits.length){
+    const p=hits[0].point.clone();
+    const dir=new THREE.Vector3().subVectors(camera.position,p).setY(0).normalize();
+    const pp=p.clone().add(dir.multiplyScalar(26)); pp.y=p.y+12;
+    poiLayer.classList.remove('dim');
+    flyTo(pp.toArray(),p.toArray(),1500);
+  }
+});
 addEventListener('keydown',e=>{
+  if(e.key==='Escape'){ closeCard(); dirpanel.classList.remove('show'); return; }
   const views=WORLDS[activeWorld].views, keys=Object.keys(views);
   const n=parseInt(e.key);
   if(n>=1&&n<=keys.length){ const v=views[keys[n-1]]; flyTo(v.p,v.t,1900); }
@@ -1827,6 +1936,7 @@ window.__APP_READY__=true;
 window.__gw=gw; window.__city=city;   // 调试钩子
 window.__r3={renderer,scene,camera,controls,composer};
 window.__THREE=THREE;
+window.__animate=animate; // 手动步进（rAF 被系统冻结时用于验证）
 
 /* ═══════════ 入场 ═══════════ */
 buildMarkers(); rebuildViewButtons();
