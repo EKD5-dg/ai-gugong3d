@@ -595,7 +595,7 @@ const matGoldG   = roofMat('goldg',texRoofG,1,1,0x0a0d10); matGoldG.side=THREE.D
 const matGoldDark= std({color:0x93702c,roughness:.55,metalness:.3});
 const matWallDark= std({color:0x571219,roughness:.85});
 const matMarble  = stoneMat(4,4);
-const matMarbleBig=stoneMat(14,22);
+const matMarbleBig=stoneMat(5,2);
 const matColumn  = std({color:0x61161d,roughness:.7});
 const matDoor    = std({color:0x120a0c,roughness:.9});
 const matDoorStud= std({map:texDoorStud,roughness:.75});
@@ -654,12 +654,12 @@ function hipRoofGeo(w,d,h,ridge=.58,curve=2.05,N=8){
 // 四面坡台形（台基/城台直壁；curve>1 带举折用于重檐下檐），顶点共享、绕序朝外
 function hipFrustumGeo(w1,d1,w2,d2,h,curve=1,N=8){
   const pos=[],uv=[],idx=[];
-  const ring=(s)=>{
+  const ring=(s,v)=>{   // v：该环在贴图上的纵向坐标（随高度累计）
     const ww=w1+(w2-w1)*s, dd=d1+(d2-d1)*s, y=h*Math.pow(s,curve);
     pos.push(-ww/2,y,dd/2,  ww/2,y,dd/2,  ww/2,y,-dd/2,  -ww/2,y,-dd/2);
-    uv.push(-ww/10,dd/10,  ww/10,dd/10,  ww/10,-dd/10,  -ww/10,-dd/10);
+    uv.push(0,v, 1,v, 0,v, 1,v);
   };
-  for(let k=0;k<=N;k++) ring(k/N);
+  for(let k=0;k<=N;k++) ring(k/N, k/N);
   const vi=(k,c)=>k*4+c;
   for(let k=0;k<N;k++){
     const a=vi(k,0),b=vi(k,1),c=vi(k,2),dd=vi(k,3);
@@ -669,8 +669,12 @@ function hipFrustumGeo(w1,d1,w2,d2,h,curve=1,N=8){
     idx.push(dd,a,a2, dd,a2,d2);
     idx.push(b,c,c2, b,c2,b2);
   }
-  const t0=vi(N,0),t1=vi(N,1),t2=vi(N,2),t3=vi(N,3);
-  idx.push(t0,t2,t1, t0,t3,t2);   // 顶面（+y）
+  // 顶面：独立顶点（UV 0..1，供台面墁石/走道铺装）
+  const b0=pos.length/3;
+  const ww=w2, dd=d2, y=h;
+  pos.push(-ww/2,y,dd/2,  ww/2,y,dd/2,  ww/2,y,-dd/2,  -ww/2,y,-dd/2);
+  uv.push(0,0, 1,0, 1,1, 0,1);
+  idx.push(b0,b0+1,b0+2, b0,b0+2,b0+3);   // 顶面（+y）
   const g=new THREE.BufferGeometry();
   g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
   g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
@@ -1537,7 +1541,7 @@ function terrainH(x,z){
   for(const side of [1,-1]){                        // 两侧女墙
     const parS=SI.map((p,i)=>new THREE.Vector3(
       p.x+PRI[i].x*3.2*side, p.y+THI[i]-.25, p.z+PRI[i].z*3.2*side));
-    ribbon(parS,PRI,SI.map(()=>1.15), .55,.5, matGWRibbon, .55);
+    ribbon(parS,PRI,SI.map(()=>1.15), .55,.5, matGWRibbon, 1.4);
   }
   {  // 垛口：沿细分采样每 2.4 单位摆放（段内插值），Y 严格贴合女墙顶
     const merG=new THREE.BoxGeometry(.95,1,.5);
@@ -1582,10 +1586,10 @@ function terrainH(x,z){
     room.position.y=h+2.2; g.add(room); edged(room,edgeMatG);
     for(const [dx,dz,l] of [[0,-7.4,14],[0,7.4,14],[-7.4,0,14],[7.4,0,14]])
       box(g,dz?l:.7,.85,dz?.7:l, dx,h+.35,dz, matGWMerlon,false);
-    box(g,3.6,4.6,1.2, 0,4.2,-8.4, matDoor,false);
-    box(g,3.6,4.6,1.2, 0,4.2, 8.4, matDoor,false);
-    box(g,1.2,4.6,3.6, -8.4,4.2,0, matDoor,false);
-    box(g,1.2,4.6,3.6,  8.4,4.2,0, matDoor,false);
+    box(g,3.2,4.2,1.4, 0,3.9,-7.6, matDoor,false);
+    box(g,3.2,4.2,1.4, 0,3.9, 7.6, matDoor,false);
+    box(g,1.4,4.2,3.2, -7.6,3.9,0, matDoor,false);
+    box(g,1.4,4.2,3.2,  7.6,3.9,0, matDoor,false);
     g.userData={poi,world:'wall'};
     gw.add(g); GW.towers.push({name,pos:p.clone().add(new THREE.Vector3(0,20,0)),group:g});
     return g;
