@@ -269,7 +269,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 
 /* ═══════════ 渲染器 / 场景 / 相机 ═══════════ */
 let renderer;
-try{ renderer = new THREE.WebGLRenderer({antialias:true}); }
+try{ renderer = new THREE.WebGLRenderer({antialias:false,powerPreference:'high-performance'}); }
 catch(e){
   document.getElementById('ld-msg').textContent='当前环境不支持 WebGL，无法渲染 3D 场景';
   throw e;
@@ -280,7 +280,7 @@ renderer.info.autoReset=false;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.12;
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;
 
 // MSAA：给 EffectComposer 的渲染目标开 4x 多重采样（否则后期管线丢失抗锯齿）
 const _rtSize=renderer.getDrawingBufferSize(new THREE.Vector2());
@@ -324,7 +324,7 @@ const hemi=new THREE.HemisphereLight(0x7fb2e8, 0x0b0f1a, .85); scene.add(hemi);
 const amb=new THREE.AmbientLight(0x1c2740, .68); scene.add(amb);
 const sun = new THREE.DirectionalLight(0xffe8c0, 1.35); sun.position.set(340,460,260); scene.add(sun);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048,2048);
+sun.shadow.mapSize.set(1024,1024);
 sun.shadow.camera.left=-640; sun.shadow.camera.right=640;
 sun.shadow.camera.top=660;  sun.shadow.camera.bottom=-660;
 sun.shadow.camera.near=60;  sun.shadow.camera.far=1700;
@@ -603,6 +603,8 @@ const matColumn  = std({color:0x61161d,roughness:.7});
 const matDoor    = std({color:0x120a0c,roughness:.9});
 const matDoorStud= std({map:texDoorStud,roughness:.75});
 const matLeaf    = std({color:0x14523d,roughness:.92});
+const matTreeCyp = std({color:0x0e3d2c,roughness:.95});   // 古柏共享
+const matTreeLat = std({color:0x1b5a40,roughness:.95});   // 宫槐共享
 const matTrunk   = std({color:0x243328,roughness:.95});
 const matHill    = std({color:0x0e2f26,roughness:.95});
 const matCaihua  = std({color:0x143a46,roughness:.75});   // 彩画枋
@@ -1086,16 +1088,15 @@ function mergeGeo(items){
 function tree(x,z,s=1,kind=1){
   const g=new THREE.Group(); g.position.set(x,0,z);
   g.rotation.y=Math.random()*Math.PI*2;
-  const tint=new THREE.Color(kind?0x1b5a40:0x0e3d2c);
-  tint.offsetHSL((Math.random()-.5)*.05,0,(Math.random()-.5)*.08);
-  const lm=std({color:tint,roughness:.95});
+  const tint=kind?0x1b5a40:0x0e3d2c;
+  const lm=kind?matTreeLat:matTreeCyp;   // 共享材质（不再每棵克隆）
   if(kind===0){ // 古柏：塔形三层皱冠
     const trunk=new THREE.Mesh(mergeGeo([
       {geo:new THREE.CylinderGeometry(.3*s,.5*s,2.8*s,7),m:new THREE.Matrix4().makeTranslation(0,1.4*s,0)}
     ]),matTrunk); trunk.castShadow=true; g.add(trunk);
     const items=[]; let r=2.2;
     for(let k=0;k<4;k++){
-      items.push({geo:jitterGeo(new THREE.SphereGeometry(r,9,7),.4*s),
+      items.push({geo:jitterGeo(new THREE.SphereGeometry(r,7,5),.4*s),
         m:new THREE.Matrix4().makeTranslation((Math.random()-.5)*.6*s,(3.6+k*1.5)*s,(Math.random()-.5)*.6*s)});
       r*=.72;
     }
@@ -1108,7 +1109,7 @@ function tree(x,z,s=1,kind=1){
     ]),matTrunk); trunk.castShadow=true; g.add(trunk);
     const items=[];
     for(let k=0;k<5;k++){
-      items.push({geo:jitterGeo(new THREE.SphereGeometry(1.4+Math.random()*.9,9,7),.55*s),
+      items.push({geo:jitterGeo(new THREE.SphereGeometry(1.4+Math.random()*.9,7,5),.55*s),
         m:new THREE.Matrix4().makeTranslation((Math.random()-.5)*3.4*s,(4.7+Math.random()*1.5)*s,(Math.random()-.5)*3*s)});
     }
     const canopy=new THREE.Mesh(mergeGeo(items),lm); canopy.castShadow=true; g.add(canopy);
@@ -2314,8 +2315,8 @@ function animate(){
     frames=0; fpsT=0;
     // 自适应降档：持续低帧自动减负（高配机不受影响）
     if(qCooldown>0) qCooldown-=.5;
-    if(val<25&&qCooldown<=0&&quality>0){
-      quality--; qCooldown=8;
+    if(val<30&&qCooldown<=0&&quality>0){
+      quality--; qCooldown=4;
       if(quality===1){ renderer.setPixelRatio(1.15); composer.setPixelRatio(1.15); }
       else if(quality===0){
         renderer.shadowMap.enabled=false; sun.castShadow=false;
