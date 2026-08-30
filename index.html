@@ -212,6 +212,7 @@ import { EffectComposer }  from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass }      from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass }      from 'three/addons/postprocessing/OutputPass.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 /* ═══════════ 渲染器 / 场景 / 相机 ═══════════ */
 let renderer;
@@ -227,11 +228,22 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.12;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+// MSAA：给 EffectComposer 的渲染目标开 4x 多重采样（否则后期管线丢失抗锯齿）
+const _rtSize=renderer.getDrawingBufferSize(new THREE.Vector2());
+const _msaaRT=new THREE.WebGLRenderTarget(_rtSize.x,_rtSize.y,{samples:4,type:THREE.HalfFloatType});
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x04070f);
 scene.fog = new THREE.Fog(0x04070f, 520, 3400);
+// 环境反射（IBL）：给金属与阴面柔和的环境光泽
+{
+  const pmrem=new THREE.PMREMGenerator(renderer);
+  scene.environment=pmrem.fromScene(new RoomEnvironment(),0.04).texture;
+  scene.environmentIntensity=.32;
+  pmrem.dispose();
+}
 
 const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, .4, 8000);
 camera.position.set(0, 640, 1180);
@@ -242,7 +254,7 @@ controls.minDistance = 3; controls.maxDistance = 2200;
 controls.maxPolarAngle = 1.53; controls.minPolarAngle = .03;
 controls.autoRotateSpeed = .55;
 
-const composer = new EffectComposer(renderer);
+const composer = new EffectComposer(renderer,_msaaRT);
 composer.addPass(new RenderPass(scene,camera));
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight), .75, .38, .8);
 composer.addPass(bloom);
@@ -258,7 +270,7 @@ scene.add(new THREE.HemisphereLight(0x7fb2e8, 0x0b0f1a, .6));
 scene.add(new THREE.AmbientLight(0x1c2740, .5));
 const sun = new THREE.DirectionalLight(0xffe8c0, 1.35); sun.position.set(340,460,260); scene.add(sun);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048,2048);
+sun.shadow.mapSize.set(4096,4096);
 sun.shadow.camera.left=-640; sun.shadow.camera.right=640;
 sun.shadow.camera.top=660;  sun.shadow.camera.bottom=-660;
 sun.shadow.camera.near=60;  sun.shadow.camera.far=1700;
@@ -272,108 +284,139 @@ function canvasTex(w,h,draw){
   draw(c.getContext('2d'),w,h);
   const t=new THREE.CanvasTexture(c);
   t.wrapS=t.wrapT=THREE.RepeatWrapping; t.colorSpace=THREE.SRGBColorSpace; t.anisotropy=8;
+  t.userData.normal=makeNormalMap(c,2.4);   // 由明度场生成凹凸法线
   return t;
 }
+function makeNormalMap(srcCanvas,strength){
+  const w=srcCanvas.width,h=srcCanvas.height;
+  const src=srcCanvas.getContext('2d').getImageData(0,0,w,h).data;
+  const out=document.createElement('canvas'); out.width=w; out.height=h;
+  const og=out.getContext('2d'), img=og.createImageData(w,h);
+  const H=(x,y)=>src[(((y+h)%h)*w+((x+w)%w))*4]/255;
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+    const dx=(H(x+1,y)-H(x-1,y))*strength, dy=(H(x,y+1)-H(x,y-1))*strength;
+    const il=1/Math.sqrt(dx*dx+dy*dy+1), i=(y*w+x)*4;
+    img.data[i]  =(-dx*il*.5+.5)*255;
+    img.data[i+1]=(-dy*il*.5+.5)*255;
+    img.data[i+2]=(il*.5+.5)*255;
+    img.data[i+3]=255;
+  }
+  og.putImageData(img,0,0);
+  const nt=new THREE.CanvasTexture(out);
+  nt.wrapS=nt.wrapT=THREE.RepeatWrapping;
+  return nt;
+}
 // 城砖（红色宫墙砖）
-const texBrick=canvasTex(256,256,(g,w,h)=>{
+const texBrick=canvasTex(512,512,(g,w,h)=>{
   g.fillStyle='#5a1219'; g.fillRect(0,0,w,h);
-  const bh=32,bw=64;
+  const bh=64,bw=128;
   for(let y=0;y<h/bh;y++){
     const off=(y%2)*bw/2;
     for(let x=-1;x<w/bw+1;x++){
       const l=.82+Math.random()*.34;
       g.fillStyle=`rgb(${(150*l)|0},${(36*l)|0},${(46*l)|0})`;
-      g.fillRect(x*bw+off+1,y*bh+1,bw-2,bh-2);
-      g.fillStyle='rgba(255,215,175,.06)'; g.fillRect(x*bw+off+1,y*bh+1,bw-2,2);
+      g.fillRect(x*bw+off+2,y*bh+2,bw-4,bh-4);
+      g.fillStyle='rgba(255,215,175,.06)'; g.fillRect(x*bw+off+2,y*bh+2,bw-4,4);
     }
   }
 });
 // 灰砖（长城）
-const texGWBrick=canvasTex(256,256,(g,w,h)=>{
+const texGWBrick=canvasTex(512,512,(g,w,h)=>{
   g.fillStyle='#3d4349'; g.fillRect(0,0,w,h);
-  const bh=32,bw=64;
+  const bh=64,bw=128;
   for(let y=0;y<h/bh;y++){
     const off=(y%2)*bw/2;
     for(let x=-1;x<w/bw+1;x++){
       const l=.8+Math.random()*.36;
       g.fillStyle=`rgb(${(118*l)|0},${(126*l)|0},${(134*l)|0})`;
-      g.fillRect(x*bw+off+1,y*bh+1,bw-2,bh-2);
-      g.fillStyle='rgba(255,255,255,.05)'; g.fillRect(x*bw+off+1,y*bh+1,bw-2,2);
+      g.fillRect(x*bw+off+2,y*bh+2,bw-4,bh-4);
+      g.fillStyle='rgba(255,255,255,.05)'; g.fillRect(x*bw+off+2,y*bh+2,bw-4,4);
     }
   }
 });
 // 汉白玉石条
-const texStone=canvasTex(256,256,(g,w,h)=>{
+const texStone=canvasTex(512,512,(g,w,h)=>{
   g.fillStyle='#8f979e'; g.fillRect(0,0,w,h);
-  const bh=42;
+  const bh=84;
   for(let y=0;y<h/bh;y++){
-    const off=(y%2)*53;
-    for(let x=-1;x<w/106+2;x++){
+    const off=(y%2)*106;
+    for(let x=-1;x<w/212+2;x++){
       const l=.88+Math.random()*.22;
       g.fillStyle=`rgb(${(186*l)|0},${(192*l)|0},${(198*l)|0})`;
-      g.fillRect(x*106+off+1,y*bh+1,104,bh-2);
-      g.fillStyle='rgba(30,40,50,.25)'; g.fillRect(x*106+off+1,y*bh+bh-3,104,2);
+      g.fillRect(x*212+off+2,y*bh+2,208,bh-4);
+      g.fillStyle='rgba(30,40,50,.25)'; g.fillRect(x*212+off+2,y*bh+bh-5,208,3);
     }
   }
 });
 // 金砖墁地（室内地面）
-const texFloor=canvasTex(256,256,(g,w,h)=>{
+const texFloor=canvasTex(512,512,(g,w,h)=>{
   g.fillStyle='#191f26'; g.fillRect(0,0,w,h);
-  const s=64;
+  const s=128;
   for(let y=0;y<h/s;y++)for(let x=0;x<w/s;x++){
     const l=.82+Math.random()*.34;
     g.fillStyle=`rgb(${(64*l)|0},${(70*l)|0},${(78*l)|0})`;
-    g.fillRect(x*s+2,y*s+2,s-4,s-4);
-    g.fillStyle='rgba(255,255,255,.06)'; g.fillRect(x*s+2,y*s+2,s-4,2);
-    g.fillStyle='rgba(0,0,0,.22)'; g.fillRect(x*s+2,y*s+s-5,s-4,3);
+    g.fillRect(x*s+3,y*s+3,s-6,s-6);
+    g.fillStyle='rgba(255,255,255,.06)'; g.fillRect(x*s+3,y*s+3,s-6,3);
+    g.fillStyle='rgba(0,0,0,.22)'; g.fillRect(x*s+3,y*s+s-9,s-6,6);
   }
 });
 // 琉璃瓦（每行筒瓦一片片清晰可见）
-const texRoof=canvasTex(256,256,(g,w,h)=>{
+const texRoof=canvasTex(512,512,(g,w,h)=>{
   g.fillStyle='#6b5220'; g.fillRect(0,0,w,h);
-  const rh=32;
+  const rh=64;
   for(let y=0;y<h/rh+1;y++){
-    const off=(y%2)*16;
-    for(let x=-1;x<w/32+2;x++){
+    const off=(y%2)*32;
+    for(let x=-1;x<w/64+2;x++){
       const l=.8+Math.random()*.38;
       const grd=g.createLinearGradient(0,y*rh,0,y*rh+rh);
       grd.addColorStop(0,`rgb(${(214*l)|0},${(172*l)|0},${(92*l)|0})`);
       grd.addColorStop(.62,`rgb(${(166*l)|0},${(128*l)|0},${(58*l)|0})`);
       grd.addColorStop(1,`rgb(${(104*l)|0},${(78*l)|0},${(34*l)|0})`);
       g.fillStyle=grd;
-      g.beginPath(); g.arc(x*32+off+16,y*rh+rh,16,Math.PI,0); g.fill();
+      g.beginPath(); g.arc(x*64+off+32,y*rh+rh,31,Math.PI,0); g.fill();
     }
-    g.fillStyle='rgba(35,22,4,.6)'; g.fillRect(0,y*rh+rh-3,w,3);
+    g.fillStyle='rgba(35,22,4,.6)'; g.fillRect(0,y*rh+rh-5,w,5);
   }
 });
 // 灰瓦（长城城楼）
-const texRoofG=canvasTex(256,256,(g,w,h)=>{
+const texRoofG=canvasTex(512,512,(g,w,h)=>{
   g.fillStyle='#343b42'; g.fillRect(0,0,w,h);
-  const rh=32;
+  const rh=64;
   for(let y=0;y<h/rh+1;y++){
-    const off=(y%2)*16;
-    for(let x=-1;x<w/32+2;x++){
+    const off=(y%2)*32;
+    for(let x=-1;x<w/64+2;x++){
       const l=.8+Math.random()*.34;
       const grd=g.createLinearGradient(0,y*rh,0,y*rh+rh);
       grd.addColorStop(0,`rgb(${(128*l)|0},${(138*l)|0},${(148*l)|0})`);
       grd.addColorStop(.65,`rgb(${(88*l)|0},${(96*l)|0},${(104*l)|0})`);
       grd.addColorStop(1,`rgb(${(54*l)|0},${(60*l)|0},${(66*l)|0})`);
       g.fillStyle=grd;
-      g.beginPath(); g.arc(x*32+off+16,y*rh+rh,16,Math.PI,0); g.fill();
+      g.beginPath(); g.arc(x*64+off+32,y*rh+rh,31,Math.PI,0); g.fill();
     }
-    g.fillStyle='rgba(10,14,18,.6)'; g.fillRect(0,y*rh+rh-3,w,3);
+    g.fillStyle='rgba(10,14,18,.6)'; g.fillRect(0,y*rh+rh-5,w,5);
   }
 });
 // 门钉金钉红门
-const texDoorStud=canvasTex(256,384,(g,w,h)=>{
+const texDoorStud=canvasTex(512,768,(g,w,h)=>{
   g.fillStyle='#8a1a20'; g.fillRect(0,0,w,h);
-  g.strokeStyle='#530d12'; g.lineWidth=4;
-  for(let x=0;x<=w;x+=64){g.beginPath();g.moveTo(x,0);g.lineTo(x,h);g.stroke();}
-  for(let y=0;y<=h;y+=96){g.beginPath();g.moveTo(0,y);g.lineTo(w,y);g.stroke();}
-  for(let y=48;y<h;y+=96)for(let x=32;x<w;x+=64){
-    const r=g.createRadialGradient(x-3,y-3,1,x,y,9);
+  g.strokeStyle='#530d12'; g.lineWidth=7;
+  for(let x=0;x<=w;x+=128){g.beginPath();g.moveTo(x,0);g.lineTo(x,h);g.stroke();}
+  for(let y=0;y<=h;y+=192){g.beginPath();g.moveTo(0,y);g.lineTo(w,y);g.stroke();}
+  for(let y=96;y<h;y+=192)for(let x=64;x<w;x+=128){
+    const r=g.createRadialGradient(x-6,y-6,2,x,y,18);
     r.addColorStop(0,'#ffe9a8'); r.addColorStop(.5,'#c99a3d'); r.addColorStop(1,'#7a5a1c');
-    g.fillStyle=r; g.beginPath(); g.arc(x,y,8,0,7); g.fill();
+    g.fillStyle=r; g.beginPath(); g.arc(x,y,16,0,7); g.fill();
+  }
+});
+// 广场砖铺装
+const texPlaza=canvasTex(512,512,(g,w,h)=>{
+  g.fillStyle='#131d33'; g.fillRect(0,0,w,h);
+  const s=128;
+  for(let y=0;y<h/s;y++)for(let x=0;x<w/s;x++){
+    const l=.88+Math.random()*.24;
+    g.fillStyle=`rgb(${(24*l)|0},${(35*l)|0},${(60*l)|0})`;
+    g.fillRect(x*s+3,y*s+3,s-6,s-6);
+    g.fillStyle='rgba(130,190,230,.05)'; g.fillRect(x*s+3,y*s+3,s-6,3);
   }
 });
 // "正大光明"匾
@@ -413,12 +456,16 @@ const texCouplet=canvasTex(64,256,(g,w,h)=>{
   for(let y=34;y<h-16;y+=36) g.fillText('龍',w/2,y);
 });
 
-// 纹理克隆缓存（同一纹理不同平铺密度）
+// 纹理克隆缓存（同一纹理不同平铺密度；法线随母图同步克隆并同密度平铺）
 const texCache={}, matCache={};
 function rep(tex,rx,ry){
   const k=tex.uuid+'|'+rx+'|'+ry;
   if(texCache[k]) return texCache[k];
   const t=tex.clone(); t.needsUpdate=true; t.repeat.set(rx,ry);
+  if(tex.userData.normal){
+    const n=tex.userData.normal.clone(); n.needsUpdate=true; n.repeat.set(rx,ry);
+    t.userData.normal=n;
+  }
   texCache[k]=t; return t;
 }
 
@@ -428,7 +475,14 @@ const gw=new THREE.Group(); scene.add(gw); gw.visible=false; // 世界二：长�
 const fx={};
 
 const solidMats=new Set();
-function std(o){ const m=new THREE.MeshStandardMaterial(o); solidMats.add(m); return m; }
+function std(o){
+  // 带 rep() 母图法线的材质自动挂 normalMap
+  if(o.map&&o.map.userData&&o.map.userData.normal&&!o.normalMap){
+    o.normalMap=o.map.userData.normal;
+    o.normalScale=o.normalScale||new THREE.Vector2(.8,.8);
+  }
+  const m=new THREE.MeshStandardMaterial(o); solidMats.add(m); return m;
+}
 
 function matWith(key,make){ if(matCache[key])return matCache[key]; matCache[key]=make(); return matCache[key]; }
 // 不同尺寸的墙体用不同砖缝密度，保证每块砖比例一致
@@ -466,7 +520,7 @@ const matCarpet  = matWith('carpet',()=>std({map:texCarpet,roughness:.95}));
 const matCouplet = matWith('couplet',()=>std({map:texCouplet,roughness:.7}));
 const throneStone= matWith('tstone',()=>std({color:0xcabfa6,map:rep(texStone,3,3),roughness:.7}));
 
-const edgeMat=new THREE.LineBasicMaterial({color:0x59e2ff,transparent:true,opacity:.5,toneMapped:false});
+const edgeMat=new THREE.LineBasicMaterial({color:0x59e2ff,transparent:true,opacity:.42,toneMapped:false});
 
 /* ═══════════ 几何工具（含 UV，让砖瓦纹理落地） ═══════════ */
 function edged(mesh){
@@ -871,8 +925,8 @@ const matPlatform=new THREE.MeshStandardMaterial({color:0x0a1120,roughness:.95})
 const matLand    =new THREE.MeshStandardMaterial({color:0x0e1727,roughness:.95});
 const matWater   =new THREE.MeshStandardMaterial({color:0x082c40,roughness:.25,metalness:.2,
   emissive:0x0a3b52,emissiveIntensity:.5});
-const matPlaza   =new THREE.MeshStandardMaterial({color:0x141e35,roughness:.95});
-const matPlaza2  =new THREE.MeshStandardMaterial({color:0x1b2742,roughness:.95});
+const matPlaza   =std({map:rep(texPlaza,6,20),roughness:.95});
+const matPlaza2  =std({map:rep(texPlaza,7,9),roughness:.9,color:0xd8e4f4});
 {
   const plat=new THREE.Mesh(new THREE.ShapeGeometry(roundedShape(1012,1560,80),12),matPlatform);
   plat.geometry.rotateX(-Math.PI/2); city.add(plat); edged(plat);
@@ -994,11 +1048,14 @@ wall(376,-480,376,-176);  wall(376,-124,376,480);
 wall(-376,-480,-376,-176);wall(-376,-124,-376,480);
 city.add(gate({x: 376,z:-150,w:48,d:20,h:10,rot:Math.PI/2,towerH:5}));
 city.add(gate({x:-376,z:-150,w:48,d:20,h:10,rot:Math.PI/2,towerH:5}));
-// —— 东六宫 / 西六宫（宫各成院）+ 文华殿 / 武英殿
+// —— 东六宫 / 西六宫（尺寸错落，宫各成院）+ 文华殿 / 武英殿
 [1,-1].forEach(s=>{
+  let vi=0;
   for(const sx of [210,330]) for(const sz of [150,230,310]){
-    city.add(palace({w:44,d:32,bodyH:7,tiers:1,roofH:5,x:s*sx,z:sz}));
-    compound(s*sx, sz, 44, 32);
+    const wv=40+(vi%3)*5, dv=30+(vi%2)*6, rh=4.4+(vi%3)*.7;
+    city.add(palace({w:wv,d:dv,bodyH:7,tiers:1,roofH:rh,x:s*sx,z:sz}));
+    compound(s*sx, sz, wv, dv);
+    vi++;
   }
 });
 city.add(palace({w:56,d:26,bodyH:9,tiers:1,roofH:6.5,x: 245,z:-235,dougong:true})); compound( 245,-235,56,26);
