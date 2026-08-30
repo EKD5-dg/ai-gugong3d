@@ -500,8 +500,8 @@ const matGWLong  = gwBrickMat(40,2.4);
 const matGWRibbon= matWith('gwribbon',()=>std({map:rep(texGWBrick,1,1),roughness:.85,side:THREE.DoubleSide}));
 const matGWMerlon= gwBrickMat(1,1.2);
 const matGWTree  = matWith('gwtree',()=>std({color:0xffffff,roughness:1}));
-const matGold    = roofMat('gold',texRoof,1,1,0x1a1204);
-const matGoldG   = roofMat('goldg',texRoofG,1,1,0x0a0d10);
+const matGold    = roofMat('gold',texRoof,1,1,0x1a1204); matGold.side=THREE.DoubleSide;
+const matGoldG   = roofMat('goldg',texRoofG,1,1,0x0a0d10); matGoldG.side=THREE.DoubleSide;
 const matGoldDark= std({color:0x93702c,roughness:.55,metalness:.3});
 const matWallDark= std({color:0x571219,roughness:.85});
 const matMarble  = stoneMat(4,4);
@@ -534,40 +534,86 @@ function box(parent,w,h,d,x,y,z,m,edge=true){
   g.castShadow=true; g.receiveShadow=true;
   parent.add(g); if(edge)edged(g); return g;
 }
-function hipRoofGeo(w,d,h,ridge=.58){
-  const a=w/2,b=d/2,rw=a*ridge,pos=[],uv=[];
-  const A=[-a,0,b],B=[a,0,b],C=[a,0,-b],D=[-a,0,-b],P1=[-rw,h,0],P2=[rw,h,0];
-  const tri=(p,q,r)=>{pos.push(...p,...q,...r);
-    uv.push(p[0]/5,p[2]/5,q[0]/5,q[2]/5,r[0]/5,r[2]/5);};
-  tri(A,B,P2); tri(A,P2,P1); tri(C,D,P1); tri(C,P1,P2); tri(D,A,P1); tri(B,C,P2);
+// 庑殿顶：六段举折凹曲线（脊陡檐缓），indexed 平滑法线
+function hipRoofGeo(w,d,h,ridge=.58,curve=1.65,N=6){
+  const rw=(w/2)*ridge, pos=[],uv=[],idx=[];
+  const ring=(s)=>{
+    const zh=d/2*(1-s), xh=w/2+(rw-w/2)*s, y=h*Math.pow(s,curve);
+    return [[-xh,y,zh],[xh,y,zh],[xh,y,-zh],[-xh,y,-zh]];
+  };
+  const rings=[]; for(let k=0;k<=N;k++) rings.push(ring(k/N));
+  const quad=(p,q,r,s)=>{
+    const b=pos.length/3;
+    pos.push(...p,...q,...r, ...p,...r,...s);
+    uv.push(p[0]/5,p[2]/5, q[0]/5,q[2]/5, r[0]/5,r[2]/5,
+            p[0]/5,p[2]/5, r[0]/5,r[2]/5, s[0]/5,s[2]/5);
+    idx.push(b,b+1,b+2, b,b+2,b+3);
+  };
+  for(let k=0;k<N;k++){
+    const A=rings[k],B=rings[k+1];
+    quad(A[0],A[1],B[1],B[0]);
+    quad(A[2],A[3],B[3],B[2]);
+    quad(A[3],A[0],B[0],B[3]);
+    quad(A[1],A[2],B[2],B[1]);
+  }
   const g=new THREE.BufferGeometry();
   g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
   g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
-  g.computeVertexNormals(); return g;
+  g.setIndex(idx); g.computeVertexNormals();
+  return g;
 }
-function hipFrustumGeo(w1,d1,w2,d2,h){
-  const a1=w1/2,b1=d1/2,a2=w2/2,b2=d2/2,pos=[],uv=[];
-  const B=[[-a1,0,b1],[a1,0,b1],[a1,0,-b1],[-a1,0,-b1]];
-  const T=[[-a2,h,b2],[a2,h,b2],[a2,h,-b2],[-a2,h,-b2]];
-  const q=(p,r,s,t)=>{pos.push(...p,...r,...s,...p,...s,...t);
-    uv.push(p[0]/5,p[2]/5,r[0]/5,r[2]/5,s[0]/5,s[2]/5,p[0]/5,p[2]/5,s[0]/5,s[2]/5,t[0]/5,t[2]/5);};
-  q(B[0],B[1],T[1],T[0]); q(B[2],B[3],T[3],T[2]); q(B[3],B[0],T[0],T[3]); q(B[1],B[2],T[2],T[1]);
-  q(T[0],T[1],T[2],T[3]);
+// 四面坡台形（台基/城台直壁；curve>1 时带举折，用于重檐下檐）
+function hipFrustumGeo(w1,d1,w2,d2,h,curve=1){
+  const pos=[],uv=[],idx=[];
+  const ring=(s)=>{
+    const ww=w1+(w2-w1)*s, dd=d1+(d2-d1)*s, y=h*Math.pow(s,curve);
+    return [[-ww/2,y,dd/2],[ww/2,y,dd/2],[ww/2,y,-dd/2],[-ww/2,y,-dd/2]];
+  };
+  const rings=[]; for(let k=0;k<=8;k++) rings.push(ring(k/8));
+  const quad=(p,q,r,s)=>{
+    const b=pos.length/3;
+    pos.push(...p,...q,...r, ...p,...r,...s);
+    uv.push(p[0]/5,p[2]/5, q[0]/5,q[2]/5, r[0]/5,r[2]/5,
+            p[0]/5,p[2]/5, r[0]/5,r[2]/5, s[0]/5,s[2]/5);
+    idx.push(b,b+1,b+2, b,b+2,b+3);
+  };
+  for(let k=0;k<8;k++){
+    const A=rings[k],B=rings[k+1];
+    quad(A[0],A[1],B[1],B[0]); quad(A[2],A[3],B[3],B[2]);
+    quad(A[3],A[0],B[0],B[3]); quad(A[1],A[2],B[2],B[1]);
+  }
+  quad(rings[8][0],rings[8][1],rings[8][2],rings[8][3]);
   const g=new THREE.BufferGeometry();
   g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
   g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
-  g.computeVertexNormals(); return g;
+  g.setIndex(idx); g.computeVertexNormals();
+  return g;
 }
-function pyramidGeo(w,d,h){
-  const a=w/2,b=d/2,pos=[],uv=[];
-  const A=[-a,0,b],B=[a,0,b],C=[a,0,-b],D=[-a,0,-b],T=[0,h,0];
-  const tri=(p,q,r)=>{pos.push(...p,...q,...r);
-    uv.push(p[0]/5,p[2]/5,q[0]/5,q[2]/5,r[0]/5,r[2]/5);};
-  tri(A,B,T); tri(B,C,T); tri(C,D,T); tri(D,A,T);
+// 攒尖顶：曲线收分至宝顶
+function pyramidGeo(w,d,h,curve=1.65,N=6){
+  const pos=[],uv=[],idx=[];
+  const ring=(s)=>{
+    const a=1-s, y=h*Math.pow(s,curve);
+    return [[-w/2*a,y,d/2*a],[w/2*a,y,d/2*a],[w/2*a,y,-d/2*a],[-w/2*a,y,-d/2*a]];
+  };
+  const rings=[]; for(let k=0;k<=N;k++) rings.push(ring(k/N));
+  const quad=(p,q,r,s)=>{
+    const b=pos.length/3;
+    pos.push(...p,...q,...r, ...p,...r,...s);
+    uv.push(p[0]/5,p[2]/5, q[0]/5,q[2]/5, r[0]/5,r[2]/5,
+            p[0]/5,p[2]/5, r[0]/5,r[2]/5, s[0]/5,s[2]/5);
+    idx.push(b,b+1,b+2, b,b+2,b+3);
+  };
+  for(let k=0;k<N;k++){
+    const A=rings[k],B=rings[k+1];
+    quad(A[0],A[1],B[1],B[0]); quad(A[1],A[2],B[2],B[1]);
+    quad(A[2],A[3],B[3],B[2]); quad(A[3],A[0],B[0],B[3]);
+  }
   const g=new THREE.BufferGeometry();
   g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
   g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
-  g.computeVertexNormals(); return g;
+  g.setIndex(idx); g.computeVertexNormals();
+  return g;
 }
 function roundedPath(t,w,h,r){
   const x=-w/2,y=-h/2;
@@ -755,7 +801,7 @@ function palace(o){
   eaveDecor(g,w,d,topY+bodyH-1.3,o.dougong);
   let rt=topY+bodyH;
   if(double){
-    const fr=sh(new THREE.Mesh(hipFrustumGeo(w+6,d+6,Math.max(w-18,6),Math.max(d-18,6),4.4),rm));
+    const fr=sh(new THREE.Mesh(hipFrustumGeo(w+6,d+6,Math.max(w-18,6),Math.max(d-18,6),4.4,1.5),rm));
     fr.position.y=rt; g.add(fr);
     eaveCorners(g,w+6,d+6,rt+.2);
     rt+=4.4;
@@ -1163,25 +1209,28 @@ const GW={path:[],towers:[],beacons:[]};
   }
   function ribbon(samples, baseHalf, topHalf, getTopH, embed, mat){
     // 自适应细分：相邻采样高差>6 时插值加密，陡坡不再出现长条斜面
-    const S=[],PR=[];
+    // 注意：墙高随细分线性插值（不能按新索引重查，否则墙顶错位成褶皱）
+    const S=[],PR=[],TH=[];
     for(let i=0;i<samples.length;i++){
+      const p=samples[i], thi=getTopH(i);
       if(i<samples.length-1){
-        const p=samples[i], q=samples[i+1], pr=perp[i], pr2=perp[i+1];
+        const q=samples[i+1], pr=perp[i], pr2=perp[i+1], thj=getTopH(i+1);
         const steps=Math.max(1,Math.ceil(Math.abs(q.y-p.y)/6));
         for(let k=0;k<steps;k++){
           const t=k/steps;
           S.push(new THREE.Vector3().lerpVectors(p,q,t));
           PR.push(new THREE.Vector3().lerpVectors(pr,pr2,t).normalize());
+          TH.push(thi+(thj-thi)*t);
         }
       }else{
-        S.push(samples[i].clone()); PR.push(perp[i].clone());
+        S.push(p.clone()); PR.push(perp[i].clone()); TH.push(thi);
       }
     }
     const pos=[],uv=[],idx=[]; const m=S.length;
     let acc=0;
     for(let i=0;i<m;i++){
       if(i>0) acc+=S[i].distanceTo(S[i-1]);
-      const p=S[i], Pr=PR[i], th=getTopH(i);
+      const p=S[i], Pr=PR[i], th=TH[i];
       const yb=p.y-embed, yt=p.y+th;
       pos.push(p.x+Pr.x*baseHalf,yb,p.z+Pr.z*baseHalf);   // 0 外底
       pos.push(p.x-Pr.x*baseHalf,yb,p.z-Pr.z*baseHalf);   // 1 内底
