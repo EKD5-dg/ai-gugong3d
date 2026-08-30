@@ -100,6 +100,16 @@
   #acc-note{position:fixed;right:14px;bottom:8px;z-index:9;font-size:10px;color:#3d5a72;
     letter-spacing:1px;pointer-events:none;font-family:ui-monospace,Consolas,monospace}
 
+  /* ── 第一人称 ── */
+  #fpshud{position:fixed;inset:0;z-index:8;pointer-events:none;display:none}
+  body.fps #fpshud{display:block}
+  #fpshud .cross{position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;
+    border-radius:50%;background:rgba(255,255,255,.85);box-shadow:0 0 6px rgba(0,0,0,.6)}
+  #fpshud .hint{position:absolute;left:50%;bottom:86px;transform:translateX(-50%);
+    font-size:12px;letter-spacing:2px;color:#cfe9f5;background:var(--panel);
+    border:1px solid var(--line);border-radius:999px;padding:8px 18px;backdrop-filter:blur(8px);
+    white-space:nowrap}
+
   #card{position:fixed;top:120px;right:20px;z-index:11;width:336px;
     background:var(--panel);border:1px solid var(--line);border-radius:14px;
     padding:18px 20px;backdrop-filter:blur(12px);
@@ -203,6 +213,7 @@
   <button class="btn" data-light="day" title="昼">昼</button>
   <div class="sep"></div>
   <button class="btn" id="btn-kiosk">展陈</button>
+  <button class="btn" id="btn-fps" title="F">第一人称</button>
   <div class="sep"></div>
   <button class="btn" id="btn-dir">目录</button>
   <button class="btn" id="btn-shot" title="下载当前画面">📷</button>
@@ -215,6 +226,7 @@
 
 <button id="kiosk-exit">退出展陈 ✕</button>
 <div id="acc-note">本展项为艺术化数字示意 · 非测绘复原</div>
+<div id="fpshud"><div class="cross"></div><div class="hint">WASD / 方向键 行走 · 拖拽 环顾 · Shift 疾行 · F 或 Esc 退出</div></div>
 
 <div id="loader">
   <div class="t1">紫禁城 · 长城</div>
@@ -1884,11 +1896,11 @@ document.querySelectorAll('[data-light]').forEach(b=>
 /* ═══════════ 双语（中/EN） ═══════════ */
 let LANG='zh';
 const UI={
- zh:{dir:'目录',tour:'巡航',rotate:'旋转',shadow:'光影',scan:'扫描',xray:'线框',labels:'标注',
+ zh:{dir:'目录',tour:'巡航',rotate:'旋转',shadow:'光影',scan:'扫描',xray:'线框',labels:'标注',fps:'第一人称',
      inner:'◎ 进入殿内 · 内景视角',orbit:'◎ 环绕此建筑 · R',
      note:'本展项为艺术化数字示意 · 非测绘复原',
      tip:'左键 旋转 · 滚轮 指针处缩放 · 右键 平移 · 双击 聚焦任意点<br>点击建筑/标注 看详情 · 目录 面板直达全部近景 · R 环绕当前目标'},
- en:{dir:'INDEX',tour:'TOUR',rotate:'ORBIT',shadow:'SHADOW',scan:'SCAN',xray:'X-RAY',labels:'LABELS',
+ en:{dir:'INDEX',tour:'TOUR',rotate:'ORBIT',shadow:'SHADOW',scan:'SCAN',xray:'X-RAY',labels:'LABELS',fps:'WALK',
      inner:'◎ ENTER THE HALL',orbit:'◎ ORBIT THIS BUILDING · R',
      note:'Artistic digital interpretation — not a survey reconstruction',
      tip:'Drag orbit · Wheel zoom at pointer · Right-drag pan · Double-click to focus<br>Click buildings or markers for details · INDEX lists every close-up · R orbit'}
@@ -1899,7 +1911,7 @@ function applyLang(l){
   set('[data-toggle="tour"]',UI[l].tour); set('[data-toggle="rotate"]',UI[l].rotate);
   set('[data-toggle="shadow"]',UI[l].shadow); set('[data-toggle="scan"]',UI[l].scan);
   set('[data-toggle="xray"]',UI[l].xray); set('[data-toggle="labels"]',UI[l].labels);
-  set('#btn-dir',UI[l].dir);
+  set('#btn-fps',UI[l].fps); set('#btn-dir',UI[l].dir);
   document.getElementById('c-inner').textContent=UI[l].inner;
   document.getElementById('c-orbit').textContent=UI[l].orbit;
   document.getElementById('tip').innerHTML=UI[l].tip;
@@ -1958,6 +1970,55 @@ setInterval(()=>{
   const broken = window.__errs && window.__errs.length>2;
   if(frozen||broken) location.reload();
 },6000);
+
+/* ═══════════ 第一人称步行模拟 ═══════════ */
+const fps={on:false,x:0,y:1.7,z:-440,yaw:0,pitch:0,keys:new Set(),eye:1.7};
+let fpsSaved=null, fpsDrag=null;
+function groundAt(x,z){
+  if(activeWorld==='wall'){
+    let g=GW.gridH(x,z);
+    if(Math.abs(z-ridgeZ(x))<5.5) g=Math.max(g,GW.gridH(x,ridgeZ(x))+8); // 走上城墙
+    return g;
+  }
+  if(x>-62&&x<62&&z>-175&&z<85) return 9;   // 三大殿台基
+  if(x>-40&&x<40&&z>120&&z<310) return 6;   // 后三宫台基
+  return .1;
+}
+function enterFPS(){
+  if(fps.on||kiosk) return;
+  tourSet(false); closeCard();
+  if(fly){fly=null;controls.enabled=false;}
+  fpsSaved={pos:camera.position.clone(),target:controls.target.clone()};
+  fps.on=true;
+  const lim=activeWorld==='wall'?[-1150,1150,-800,800]:[-400,400,-540,470];
+  fps.x=THREE.MathUtils.clamp(camera.position.x,lim[0],lim[1]);
+  fps.z=THREE.MathUtils.clamp(camera.position.z,lim[2],lim[3]);
+  const d=new THREE.Vector3(); camera.getWorldDirection(d);
+  fps.yaw=Math.atan2(-d.x,-d.z);
+  fps.pitch=Math.asin(THREE.MathUtils.clamp(d.y,-1,1));
+  controls.enabled=false;
+  poiLayer.classList.add('dim');
+  document.body.classList.add('fps');
+}
+function exitFPS(){
+  if(!fps.on) return;
+  fps.on=false; fps.keys.clear(); fpsDrag=null;
+  document.body.classList.remove('fps');
+  poiLayer.classList.remove('dim');
+  camera.position.copy(fpsSaved.pos);
+  controls.target.copy(fpsSaved.target);
+  controls.enabled=true;
+}
+document.getElementById('btn-fps').addEventListener('click',()=>fps.on?exitFPS():enterFPS());
+renderer.domElement.addEventListener('pointerdown',e=>{ if(fps.on&&e.button===0) fpsDrag=[e.clientX,e.clientY]; });
+renderer.domElement.addEventListener('pointermove',e=>{
+  if(!fps.on||!fpsDrag) return;
+  fps.yaw-=(e.clientX-fpsDrag[0])*.0034;
+  fps.pitch=THREE.MathUtils.clamp(fps.pitch-(e.clientY-fpsDrag[1])*.0034,-1.25,1.25);
+  fpsDrag=[e.clientX,e.clientY];
+});
+addEventListener('pointerup',()=>fpsDrag=null);
+addEventListener('blur',()=>fps.keys.clear());
 
 /* ═══════════ 世界切换 ═══════════ */
 function rebuildViewButtons(){
@@ -2094,7 +2155,15 @@ renderer.domElement.addEventListener('dblclick',e=>{
   }
 });
 addEventListener('keydown',e=>{
-  if(e.key==='Escape'){ closeCard(); dirpanel.classList.remove('show'); return; }
+  if(e.key==='Escape'){ if(fps.on){exitFPS();return;} closeCard(); dirpanel.classList.remove('show'); return; }
+  if(fps.on){
+    const kk=e.key.toLowerCase();
+    if(['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright','shift'].includes(kk)){
+      fps.keys.add(kk); e.preventDefault(); return;
+    }
+    if(kk==='f'){ exitFPS(); return; }
+  }
+  if(e.key==='f'||e.key==='F'){ enterFPS(); return; }
   const views=WORLDS[activeWorld].views, keys=Object.keys(views);
   const n=parseInt(e.key);
   if(n>=1&&n<=keys.length){ const v=views[keys[n-1]]; flyTo(v.p,v.t,1900); }
@@ -2103,6 +2172,7 @@ addEventListener('keydown',e=>{
   else if(e.key==='l'||e.key==='L') toggleState('labels');
   else if(e.key==='r'||e.key==='R') toggleState('rotate');
 });
+addEventListener('keyup',e=>{ fps.keys.delete(e.key.toLowerCase()); });
 
 /* ═══════════ 主循环 ═══════════ */
 const clock=new THREE.Clock();
@@ -2167,6 +2237,26 @@ function animate(){
     b.glow.position.y=b.y0+Math.sin(t*3+i)*0.4;
     b.li.intensity=1.8+f*.8;
   });
+
+  // 第一人称步行
+  if(fps.on){
+    const k=fps.keys, sp=(k.has('shift')?17:6.5)*dt;
+    const fx=-Math.sin(fps.yaw), fz=-Math.cos(fps.yaw);
+    const rx=Math.cos(fps.yaw),  rz=-Math.sin(fps.yaw);
+    let mx=0,mz=0;
+    if(k.has('w')||k.has('arrowup')){mx+=fx;mz+=fz;}
+    if(k.has('s')||k.has('arrowdown')){mx-=fx;mz-=fz;}
+    if(k.has('d')||k.has('arrowright')){mx+=rx;mz+=rz;}
+    if(k.has('a')||k.has('arrowleft')){mx-=rx;mz-=rz;}
+    if(mx||mz){const L=Math.hypot(mx,mz);fps.x+=mx/L*sp;fps.z+=mz/L*sp;}
+    const lim=activeWorld==='wall'?[1150,800]:[400,540];
+    fps.x=THREE.MathUtils.clamp(fps.x,-lim[0],lim[0]);
+    fps.z=THREE.MathUtils.clamp(fps.z,-lim[1],activeWorld==='wall'?lim[1]:470);
+    const gy=groundAt(fps.x,fps.z)+fps.eye;
+    fps.y+=(gy-fps.y)*Math.min(1,dt*10);
+    camera.position.set(fps.x,fps.y,fps.z);
+    camera.rotation.set(fps.pitch,fps.yaw,0,'YXZ');
+  }
 
   controls.update();
 
