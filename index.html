@@ -737,11 +737,12 @@ function hipRidges(parent,w,d,h,ridge=.55,y0=0){
 }
 function stairs(parent,wdt,topY,zEdge,cx=0){
   const n=Math.min(9,Math.max(3,Math.round(topY/.8))),sh=topY/n;
+  const sgn=zEdge>=0?1:-1;  // 北面(+z)向外递增，南面(-z)向外递减
   for(let j=0;j<n;j++){
     const hgt=sh*(j+1);
     const m=new THREE.Mesh(new THREE.BoxGeometry(wdt,hgt,1.6),matMarble);
-    m.position.set(cx,hgt/2, zEdge-.8-(n-1-j)*1.6);
-    m.receiveShadow=true; // 小件不投影，节省阴影 pass
+    m.position.set(cx,hgt/2, zEdge+sgn*(.8+(n-1-j)*1.6));
+    m.receiveShadow=true;
     parent.add(m);
   }
 }
@@ -973,6 +974,7 @@ function gate(o){
   const g=new THREE.Group(); g.position.set(x,0,z); g.rotation.y=rot;
   const bf=sh(new THREE.Mesh(hipFrustumGeo(w+1.8,d+1.8,w,d,h),bm));
   g.add(bf); edged(bf);
+  addCollider(x,z,w/2+1,d/2+1);  // 城台碰撞（未旋转近似）
   // 城台顶面墁石
   const pave=new THREE.Mesh(new THREE.PlaneGeometry(w-1.2,d-1.2),
     matWith('gp'+w+'x'+d,()=>std({map:rep(texPave,Math.max(2,Math.round(w/5)),Math.max(2,Math.round(d/5))),roughness:.92})));
@@ -1243,6 +1245,7 @@ const matPlaza2  =std({map:rep(texPlaza,7,9),roughness:.9,color:0xd8e4f4});
     p.rotation.x=-Math.PI/2; p.position.set(x,y,z); g.add(p);};
   mkPave(118,40,16.08,0,0);
   mkPave(24,64,12.08,-74,-54); mkPave(24,64,12.08,74,-54);
+  addCollider(0,-480,62,22);  // 午门城台碰撞
   box(g,16,11,3, 0,5.5,-21.4, matDoor,false);
   box(g,11,8,2.6, -30,4,-21.2, matDoor,false);
   box(g,11,8,2.6,  30,4,-21.2, matDoor,false);
@@ -1266,8 +1269,8 @@ const matPlaza2  =std({map:rep(texPlaza,7,9),roughness:.9,color:0xd8e4f4});
   const mkTier=(w,d,y)=>{const f=sh(new THREE.Mesh(hipFrustumGeo(w,d,w-2.8,d-2.8,3),matMarbleBig));
     f.position.y=y; t.add(f); edged(f);};
   mkTier(150,262,0); mkTier(138,250,3); mkTier(126,238,6);
-  // 三路台阶 + 中路御路斜石（丹陛）
-  stairs(t,13,9,-131,-16); stairs(t,13,9,-131,16); stairs(t,22,9,131); stairs(t,10,9,-131);
+  // 三路台阶（顶面边缘起坡）+ 中路御路斜石（丹陛）
+  stairs(t,13,9,-119,-16); stairs(t,13,9,-119,16); stairs(t,22,9,119); stairs(t,10,9,-119);
   const yulu=new THREE.Mesh(new RoundedBoxGeometry(6.5,.55,16.2,2,.2),matMarble);
   yulu.position.set(0,4.25,-138.4); yulu.rotation.x=.615; yulu.castShadow=true; t.add(yulu);
   balustrade(t,123.2,235.2,9); balustrade(t,135.2,247.2,6);
@@ -1278,7 +1281,7 @@ const matPlaza2  =std({map:rep(texPlaza,7,9),roughness:.9,color:0xd8e4f4});
   const zh=palace({w:28,d:28,bodyH:9,tiers:0,pyr:true,roofH:11,y:9,z:-45,dougong:true}); zh.userData.poi=4; zh.userData.world='gugong'; city.add(zh);
   const bh=palace({w:54,d:26,bodyH:11,tiers:0,double:true,roofH:9.5,y:9,z:25,dougong:true,bays:9,bm:matWall}); bh.userData.poi=5; bh.userData.world='gugong'; city.add(bh);
   // 铜缸陈设 + 香炉
-  bronzeVat(-64,9,-152); bronzeVat(64,9,-152); bronzeVat(-64,9,18); bronzeVat(64,9,18);
+  bronzeVat(-58,9,-152); bronzeVat(58,9,-152); bronzeVat(-58,9,18); bronzeVat(58,9,18);
   censer(-30,9,-143); censer(30,9,-143);
 }
 // —— 乾清门 + 内墙
@@ -1293,7 +1296,7 @@ const matPlaza2  =std({map:rep(texPlaza,7,9),roughness:.9,color:0xd8e4f4});
   const mkTier2=(w,d,y)=>{const f=sh(new THREE.Mesh(hipFrustumGeo(w,d,w-2.8,d-2.8,3),matMarbleBig));
     f.position.y=y; t.add(f); edged(f);};
   mkTier2(92,192,0); mkTier2(82,182,3);
-  stairs(t,26,6,-96); stairs(t,18,6,96);
+  stairs(t,26,6,-91); stairs(t,18,6,91);
   balustrade(t,79.2,179.2,6);
   city.add(t);
   const qg=palace({w:46,d:24,bodyH:10,tiers:0,roofH:8.5,y:6,z:165,bays:9,bm:matWallWarm,rm:matGoldAmber,
@@ -1349,8 +1352,8 @@ huabiao(-58,0,-552); huabiao(58,0,-552);
     m.scale.y=.58; m.position.x=hx; hill.add(m);
   });
   hill.add(palace({w:16,d:16,bodyH:6,tiers:0,pyr:true,roofH:8,x:0,y:41,z:0}));    // 万春亭
-  hill.add(palace({w:11,d:11,bodyH:5,tiers:0,pyr:true,roofH:6,x:-30,y:27,z:-4})); // 周赏亭
-  hill.add(palace({w:11,d:11,bodyH:5,tiers:0,pyr:true,roofH:6,x:30,y:27,z:-4}));  // 辑芳亭
+  hill.add(palace({w:11,d:11,bodyH:5,tiers:0,pyr:true,roofH:6,x:-30,y:33,z:-4})); // 周赏亭
+  hill.add(palace({w:11,d:11,bodyH:5,tiers:0,pyr:true,roofH:6,x:30,y:33,z:-4}));  // 辑芳亭
   hill.add(palace({w:10,d:10,bodyH:4,tiers:0,pyr:true,roofH:5,x:-58,y:28,z:-9})); // 观妙亭
   hill.add(palace({w:10,d:10,bodyH:4,tiers:0,pyr:true,roofH:5,x:58,y:28,z:-9}));  // 富览亭
   hill.userData={poi:18,world:'gugong'};
@@ -1590,7 +1593,7 @@ function terrainH(x,z){
     const slab=new THREE.Mesh(new THREE.BoxGeometry(18,1.2,18),matGWLong);
     slab.position.y=h-.6; g.add(slab); edged(slab,edgeMatG);
     const room=new THREE.Mesh(hipFrustumGeo(13,13,11,11,5),matGWTower);
-    room.position.y=h+2.4; g.add(room); edged(room,edgeMatG);
+    room.position.y=h-0.4; g.add(room); edged(room,edgeMatG);
     for(const [dx,dz,l] of [[0,-8.8,16.5],[0,8.8,16.5],[-8.8,0,16.5],[8.8,0,16.5]])
       box(g,dz?l:.8,1.1,dz?.8:l, dx,h+.5,dz, matGWMerlon,false);
     box(g,3.6,4.8,1.4, 0,4.6,-9.2, matDoor,false);
@@ -1612,7 +1615,7 @@ function terrainH(x,z){
     box(g,9,10,3.4, 0,5,-14.2, matDoor,false);
     box(g,9,10,3.4, 0,5, 14.2, matDoor,false);
     box(g,26,1.4,20, 0,15.7,0, matGWLong,false);
-    const t=new THREE.Group(); t.position.y=16.4;
+    const t=new THREE.Group(); t.position.y=15;
     box(t,30,7,16, 0,3.5,0, matGWTower);
     const roof=new THREE.Mesh(hipRoofGeo(34,20,5.5,.55),matGoldG); roof.position.y=7; t.add(roof); edged(roof);
     g.add(t);
@@ -1637,16 +1640,17 @@ function terrainH(x,z){
   [Math.floor(n*.2),Math.floor(n*.82)].forEach(idx=>{
     const p=P[idx], g=new THREE.Group(); g.position.copy(p);
     const bbody=new THREE.Mesh(hipFrustumGeo(20,20,15.5,15.5,15),matGWTower);
-    bbody.position.y=6.5; g.add(bbody); edged(bbody,edgeMatG);
-    box(g,13,2,13, 0,15.2,0, matGWLong,false);
+    bbody.position.y=0; g.add(bbody); edged(bbody,edgeMatG);
+    box(g,13,2,13, 0,14,0, matGWLong,false);
     const bowl=new THREE.Mesh(new THREE.CylinderGeometry(3.4,2.4,2.2,12),matGWLong);
-    bowl.position.y=17.2; g.add(bowl);
+    bowl.position.y=15.5; g.add(bowl);
     const glow=new THREE.Mesh(new THREE.SphereGeometry(1.6,12,10),
       new THREE.MeshBasicMaterial({color:0xff8c3a,toneMapped:false}));
-    glow.position.y=18.8; g.add(glow);
-    const li=new THREE.PointLight(0xff8c3a,2.2,90,1.2); li.position.y=20.5; g.add(li);
+    glow.position.y=17; g.add(glow);
+    const li=new THREE.PointLight(0xff8c3a,2.2,90,1.2); li.position.y=19; g.add(li);
     g.userData={poi:8,world:'wall'};
-    GW.beacons.push({glow,li,y0:18.8}); GW.beaconGroups.push(g);
+    addCollider(p.x,p.z,10,10);
+    GW.beacons.push({glow,li,y0:17}); GW.beaconGroups.push(g);
     gw.add(g);
   });
 }
@@ -1989,11 +1993,13 @@ let fpsSaved=null, fpsDrag=null;
 function groundAt(x,z){
   if(activeWorld==='wall'){
     let g=GW.gridH(x,z);
-    if(Math.abs(z-ridgeZ(x))<5.5) g=Math.max(g,GW.gridH(x,ridgeZ(x))+8); // 走上城墙
+    if(Math.abs(z-ridgeZ(x))<5.5) g=Math.max(g,GW.gridH(x,ridgeZ(x))+8);
     return g;
   }
-  if(x>-62&&x<62&&z>-175&&z<85) return 9;   // 三大殿台基
-  if(x>-40&&x<40&&z>120&&z<310) return 6;   // 后三宫台基
+  // 三大殿台基（顶层 z -162..73 / x ±61.6）
+  if(x>-60&&x<60&&z>-161&&z<72) return 9;
+  // 后三宫台基（顶层 z 126..304 / x ±40.6）
+  if(x>-40&&x<40&&z>127&&z<303) return 6;
   return .1;
 }
 function enterFPS(){
