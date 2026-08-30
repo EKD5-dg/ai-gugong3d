@@ -1190,7 +1190,7 @@ const GW={path:[],towers:[],beacons:[]};
     new THREE.LineBasicMaterial({color:0x2fd9ff,transparent:true,opacity:.7,toneMapped:false})));
 
   // ── 沿山脊采样长城路径 ──
-  for(let x=-1160;x<=1160;x+=10){
+  for(let x=-1160;x<=1160;x+=5){
     const z=ridgeZ(x),y=terrainH(x,z);
     GW.path.push(new THREE.Vector3(x,y,z));
   }
@@ -1202,25 +1202,26 @@ const GW={path:[],towers:[],beacons:[]};
     const t=new THREE.Vector3().subVectors(b,a); t.y=0; t.normalize();
     perp.push(new THREE.Vector3(-t.z,0,t.x));
   }
-  function ribbon(samples, baseHalf, topHalf, getTopH, embed, mat){
-    // 自适应细分：相邻采样高差>6 时插值加密，陡坡不再出现长条斜面
-    // 注意：墙高随细分线性插值（不能按新索引重查，否则墙顶错位成褶皱）
-    const S=[],PR=[],TH=[];
-    for(let i=0;i<samples.length;i++){
-      const p=samples[i], thi=getTopH(i);
-      if(i<samples.length-1){
-        const q=samples[i+1], pr=perp[i], pr2=perp[i+1], thj=getTopH(i+1);
-        const steps=Math.max(1,Math.ceil(Math.abs(q.y-p.y)/4.5));
-        for(let k=0;k<steps;k++){
-          const t=k/steps;
-          S.push(new THREE.Vector3().lerpVectors(p,q,t));
-          PR.push(new THREE.Vector3().lerpVectors(pr,pr2,t).normalize());
-          TH.push(thi+(thj-thi)*t);
-        }
-      }else{
-        S.push(p.clone()); PR.push(perp[i].clone()); TH.push(thi);
+  // 自适应细分一次成型：墙体/女墙/垛口共用同一组采样，保证严丝合缝
+  const SI=[],PRI=[],THI=[];
+  const wallTop=i=>6.8+.9*Math.sin(i*.23)+.5*Math.sin(i*.07); // 墙高随里程起伏
+  for(let i=0;i<n;i++){
+    const p=P[i], thi=wallTop(i);
+    if(i<n-1){
+      const q=P[i+1], pr=perp[i], pr2=perp[i+1], thj=wallTop(i+1);
+      const steps=Math.max(1,Math.ceil(Math.abs(q.y-p.y)/3));
+      for(let k=0;k<steps;k++){
+        const t=k/steps;
+        SI.push(new THREE.Vector3().lerpVectors(p,q,t));
+        PRI.push(new THREE.Vector3().lerpVectors(pr,pr2,t).normalize());
+        THI.push(thi+(thj-thi)*t);
       }
+    }else{
+      SI.push(p.clone()); PRI.push(perp[i].clone()); THI.push(thi);
     }
+  }
+  // 条带：S 采样 / PR 横向法线 / TH 每采样顶高
+  function ribbon(S,PR,TH,baseHalf,topHalf,embed,mat){
     const pos=[],uv=[],idx=[]; const m=S.length;
     let acc=0;
     for(let i=0;i<m;i++){
@@ -1246,33 +1247,36 @@ const GW={path:[],towers:[],beacons:[]};
     g.setIndex(idx); g.computeVertexNormals();
     gw.add(new THREE.Mesh(g,mat));
   }
-  const wallTop=i=>6.8+.9*Math.sin(i*.23)+.5*Math.sin(i*.07); // 墙高随里程起伏
-  ribbon(P, 5.6, 3.7, wallTop, 1.6, matGWRibbon);
-  // 两侧女墙条带 + 带高低差的垛口
-  for(const side of [1,-1]){
-    const par=P.map((p,i)=>{const q=p.clone(); q.y+=wallTop(i)-.25;
-      q.x+=perp[i].x*3.2*side; q.z+=perp[i].z*3.2*side; return q;});
-    ribbon(par, .55, .5, ()=>1.15, .2, matGWRibbon);
+  ribbon(SI,PRI,THI, 5.6,3.7, 4.6, matGWRibbon);   // 主体（深埋基础，急弯处不悬空）
+  for(const side of [1,-1]){                        // 两侧女墙
+    const parS=SI.map((p,i)=>new THREE.Vector3(
+      p.x+PRI[i].x*3.2*side, p.y+THI[i]-.25, p.z+PRI[i].z*3.2*side));
+    ribbon(parS,PRI,SI.map(()=>1.15), .55,.5, .6, matGWRibbon);
   }
-  {
+  {  // 垛口：沿细分采样每 2.4 单位摆放（段内插值），Y 严格贴合女墙顶
     const merG=new THREE.BoxGeometry(.95,1,.5);
-    const cap=(n-1)*8+8;
+    const cap=3200;
     const imM=new THREE.InstancedMesh(merG,matGWMerlon,cap);
     const M=new THREE.Matrix4(), qs=new THREE.Quaternion(), up=new THREE.Vector3(0,1,0), S1=new THREE.Vector3();
     let mi=0;
-    for(let i=0;i<n-1;i++){
-      const a=P[Math.max(0,i-1)], b=P[Math.min(n-1,i+1)];
-      const tV=new THREE.Vector3().subVectors(b,a); const yaw=Math.atan2(tV.x,tV.z);
+    for(let i=1;i<SI.length&&mi<cap;i++){
+      const p0=SI[i-1], p1=SI[i];
+      const d=p0.distanceTo(p1);
+      const k=Math.max(1,Math.round(d/2.4));
+      const tV=new THREE.Vector3(p1.x-p0.x,0,p1.z-p0.z);
+      if(tV.lengthSq()<1e-8) continue;
+      const yaw=Math.atan2(tV.x,tV.z);
       qs.setFromAxisAngle(up,yaw);
-      for(let k=0;k<4;k++){
-        const t=(k+(i%2)*.35)/4;
-        const x=P[i].x+(P[i+1].x-P[i].x)*t, z=P[i].z+(P[i+1].z-P[i].z)*t;
+      for(let j=0;j<k&&mi<cap-2;j++){
+        const t=j/k;
+        const x=p0.x+(p1.x-p0.x)*t, z=p0.z+(p1.z-p0.z)*t;
+        const yTop=(p0.y+(p1.y-p0.y)*t)+((THI[i-1]+(THI[i]-THI[i-1])*t))+.9;
+        const prx=PRI[i-1].x+(PRI[i].x-PRI[i-1].x)*t, prz=PRI[i-1].z+(PRI[i].z-PRI[i-1].z)*t;
         for(const side of [1,-1]){
           if(mi>=cap) break;
-          const hh=.72+((i*7+k+(side>0?0:1))%3)*.13;   // 垛口高低错落
+          const hh=.72+((mi*7)%3)*.13;
           S1.set(1,hh,1);
-          const nx=Math.cos(yaw)*3.2*side, nz=-Math.sin(yaw)*3.2*side;
-          M.compose(new THREE.Vector3(x+nx,P[i].y+wallTop(i)+.9+hh/2,z+nz),qs,S1);
+          M.compose(new THREE.Vector3(x+prx*3.2*side,yTop+hh/2,z+prz*3.2*side),qs,S1);
           imM.setMatrixAt(mi++,M);
         }
       }
