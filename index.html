@@ -443,6 +443,9 @@ const matWallLong= brickMat(40,2.2);
 const matGWWall  = gwBrickMat(4,2);
 const matGWTower = gwBrickMat(3,2.4);
 const matGWLong  = gwBrickMat(40,2.4);
+const matGWRibbon= matWith('gwribbon',()=>std({map:rep(texGWBrick,1,1),roughness:.85,side:THREE.DoubleSide}));
+const matGWMerlon= gwBrickMat(1,1.2);
+const matGWTree  = matWith('gwtree',()=>std({color:0xffffff,roughness:1}));
 const matGold    = roofMat('gold',texRoof,1,1,0x1a1204);
 const matGoldG   = roofMat('goldg',texRoofG,1,1,0x0a0d10);
 const matGoldDark= std({color:0x93702c,roughness:.55,metalness:.3});
@@ -1048,8 +1051,28 @@ const GW={path:[],towers:[],beacons:[]};
   }
   tgeo.setAttribute('color',new THREE.BufferAttribute(colors,3));
   tgeo.computeVertexNormals();
-  const terrain=new THREE.Mesh(tgeo,new THREE.MeshStandardMaterial({vertexColors:true,flatShading:true,roughness:1}));
+  const terrain=new THREE.Mesh(tgeo,new THREE.MeshStandardMaterial({vertexColors:true,roughness:1}));
   gw.add(terrain);
+  // 山坡散树（实例化，一处 draw call，给群山比例参照）
+  {
+    const N=280, im=new THREE.InstancedMesh(new THREE.ConeGeometry(1.5,4.2,6),matGWTree,N);
+    const M=new THREE.Matrix4(), C=new THREE.Color(), Q0=new THREE.Quaternion(), S=new THREE.Vector3();
+    let seed=7; const rnd=()=>{seed=(seed*16807)%2147483647; return seed/2147483647;};
+    let placed=0, guard=0;
+    while(placed<N&&guard++<4000){
+      const x=-1150+rnd()*2300, z=-750+rnd()*1500;
+      if(Math.abs(z-ridgeZ(x))<48) continue;
+      const h=terrainH(x,z);
+      if(h<3||h>70) continue;
+      const s=.7+rnd()*1.2;
+      S.set(s,s,s);
+      M.compose(new THREE.Vector3(x,h-.2,z),Q0,S);
+      im.setMatrixAt(placed,M);
+      im.setColorAt(placed,C.setHSL(.36+rnd()*.05,.4,.07+rnd()*.07));
+      placed++;
+    }
+    im.count=placed; gw.add(im);
+  }
   const base=new THREE.Mesh(new THREE.ShapeGeometry(roundedShape(2800,1900,90),12),
     new THREE.MeshStandardMaterial({color:0x0a1120,roughness:.95}));
   base.geometry.rotateX(-Math.PI/2); base.position.y=-4; gw.add(base); edged(base);
@@ -1063,44 +1086,87 @@ const GW={path:[],towers:[],beacons:[]};
     GW.path.push(new THREE.Vector3(x,y,z));
   }
   const P=GW.path,n=P.length;
-  // ── 墙体（ instanced：基座 + 垛口，每一块垛口墙都是独立实体）──
-  const baseG=new THREE.BoxGeometry(12,6.5,11.2), topG=new THREE.BoxGeometry(9,2.6,11.2);
-  const crenG=new THREE.BoxGeometry(1.6,1.4,.9);
-  const segN=n-1;
-  const imB=new THREE.InstancedMesh(baseG,matGWLong,segN);
-  const imT=new THREE.InstancedMesh(topG,matGWLong,segN);
-  const crN=segN*6;
-  const imC=new THREE.InstancedMesh(crenG,matGWLong,crN);
-  const M=new THREE.Matrix4(),Q=new THREE.Quaternion(),UP=new THREE.Vector3(0,1,0),S1=new THREE.Vector3(1,1,1);
-  let ci=0;
-  for(let i=0;i<segN;i++){
-    const p=P[i],q=P[i+1];
-    const dir=new THREE.Vector3().subVectors(q,p), yaw=Math.atan2(dir.x,dir.z);
-    Q.setFromAxisAngle(UP,yaw);
-    M.compose(new THREE.Vector3((p.x+q.x)/2,p.y+3.1,(p.z+q.z)/2),Q,S1); imB.setMatrixAt(i,M);
-    M.compose(new THREE.Vector3((p.x+q.x)/2,p.y+7.6,(p.z+q.z)/2),Q,S1);  imT.setMatrixAt(i,M);
-    for(let k=0;k<6;k++){
-      const t=k/6, cx=p.x+(q.x-p.x)*t, cz=p.z+(q.z-p.z)*t, cy=p.y+9.7;
-      const side=k%2?4:-4;
-      const nx=Math.cos(yaw)*side, nz=-Math.sin(yaw)*side; // 垂直于墙体的横向偏移
-      M.compose(new THREE.Vector3(cx+nx,cy,cz+nz),Q,S1); imC.setMatrixAt(ci++,M);
-    }
+  // ── 长城主体：连续条带墙体（沿山脊平滑蜿蜒、下宽上窄收分、高度随里程起伏）──
+  const perp=[];
+  for(let i=0;i<n;i++){
+    const a=P[Math.max(0,i-1)], b=P[Math.min(n-1,i+1)];
+    const t=new THREE.Vector3().subVectors(b,a); t.y=0; t.normalize();
+    perp.push(new THREE.Vector3(-t.z,0,t.x));
   }
-  imC.count=ci; gw.add(imB,imT,imC);
+  function ribbon(samples, baseHalf, topHalf, getTopH, embed, mat){
+    const pos=[],uv=[],idx=[]; const m=samples.length;
+    for(let i=0;i<m;i++){
+      const p=samples[i], Pr=perp[i], th=getTopH(i);
+      const yb=p.y-embed, yt=p.y+th;
+      pos.push(p.x+Pr.x*baseHalf,yb,p.z+Pr.z*baseHalf);   // 0 外底
+      pos.push(p.x-Pr.x*baseHalf,yb,p.z-Pr.z*baseHalf);   // 1 内底
+      pos.push(p.x+Pr.x*topHalf, yt,p.z+Pr.z*topHalf);    // 2 外顶
+      pos.push(p.x-Pr.x*topHalf, yt,p.z-Pr.z*topHalf);    // 3 内顶
+      const u=i*10/6;
+      uv.push(u,0, u,0, u,th/6, u,th/6);
+      if(i<m-1){
+        const a=i*4,b=a+4;
+        idx.push(a,b,a+2, a,a+2,b+2,          // 外侧坡面（收分）
+                 a+1,a+3,b+3, a+1,b+3,b+1,    // 内侧坡面
+                 a+2,b+2,b+3, a+2,b+3,a+3);   // 顶部走道面
+      }
+    }
+    const g=new THREE.BufferGeometry();
+    g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+    g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
+    g.setIndex(idx); g.computeVertexNormals();
+    gw.add(new THREE.Mesh(g,mat));
+  }
+  const wallTop=i=>6.8+.9*Math.sin(i*.23)+.5*Math.sin(i*.07); // 墙高随里程起伏
+  ribbon(P, 5.6, 3.7, wallTop, 1.6, matGWRibbon);
+  // 两侧女墙条带 + 带高低差的垛口
+  for(const side of [1,-1]){
+    const par=P.map((p,i)=>{const q=p.clone(); q.y+=wallTop(i)-.25;
+      q.x+=perp[i].x*3.2*side; q.z+=perp[i].z*3.2*side; return q;});
+    ribbon(par, .55, .5, ()=>1.15, .2, matGWRibbon);
+  }
+  {
+    const merG=new THREE.BoxGeometry(.95,1,.5);
+    const cap=Math.ceil(n*4)+8;
+    const imM=new THREE.InstancedMesh(merG,matGWMerlon,cap);
+    const M=new THREE.Matrix4(), qs=new THREE.Quaternion(), up=new THREE.Vector3(0,1,0), S1=new THREE.Vector3();
+    let mi=0;
+    for(let i=0;i<n-1;i++){
+      const a=P[Math.max(0,i-1)], b=P[Math.min(n-1,i+1)];
+      const tV=new THREE.Vector3().subVectors(b,a); const yaw=Math.atan2(tV.x,tV.z);
+      qs.setFromAxisAngle(up,yaw);
+      for(let k=0;k<4;k++){
+        const t=(k+(i%2)*.35)/4;
+        const x=P[i].x+(P[i+1].x-P[i].x)*t, z=P[i].z+(P[i+1].z-P[i].z)*t;
+        for(const side of [1,-1]){
+          if(mi>=cap) break;
+          const hh=.72+((i*7+k+(side>0?0:1))%3)*.13;   // 垛口高低错落
+          S1.set(1,hh,1);
+          const nx=Math.cos(yaw)*3.2*side, nz=-Math.sin(yaw)*3.2*side;
+          M.compose(new THREE.Vector3(x+nx,P[i].y+wallTop(i)+.9+hh/2,z+nz),qs,S1);
+          imM.setMatrixAt(mi++,M);
+        }
+      }
+    }
+    imM.count=mi; gw.add(imM);
+  }
 
-  // ── 敌楼（每 200 单位一座）──
+  // ── 敌楼（每 200 单位一座，收分梯台身）──
   function tower(idx,name){
     const p=P[idx], g=new THREE.Group(); g.position.copy(p);
-    const bm=matGWTower;
-    box(g,17,11,17, 0,5.5,0, bm);
-    box(g,12,1.2,12, 0,11.6,0, matGWLong,false);
-    box(g,11,4.6,11, 0,14.5,0, bm);
-    for(const [dx,dz,l] of [[0,-5.9,11],[0,5.9,11],[-5.9,0,11],[5.9,0,11]])
-      box(g,dz?l+.8:1.4,1.3,dz?1.4:l+.8, dx,18.4,dz, matGWLong,false);
-    box(g,3.4,5,1, 0,4.5,-8.6, matDoor,false);
-    box(g,3.4,5,1, 0,4.5, 8.6, matDoor,false);
-    box(g,1,5,3.4, -8.6,4.5,0, matDoor,false);
-    box(g,1,5,3.4,  8.6,4.5,0, matDoor,false);
+    const h=10.5+((idx*7)%3);
+    const body=new THREE.Mesh(hipFrustumGeo(17,17,13,13,h),matGWTower);
+    body.position.y=h/2-1; g.add(body); edged(body);
+    const slab=new THREE.Mesh(new THREE.BoxGeometry(15.4,1,15.4),matGWLong);
+    slab.position.y=h-.5; g.add(slab); edged(slab);
+    const room=new THREE.Mesh(hipFrustumGeo(10.6,10.6,9,9,4.4),matGWTower);
+    room.position.y=h+2.2; g.add(room); edged(room);
+    for(const [dx,dz,l] of [[0,-7.4,14],[0,7.4,14],[-7.4,0,14],[7.4,0,14]])
+      box(g,dz?l:.7,.85,dz?.7:l, dx,h+.35,dz, matGWMerlon,false);
+    box(g,3.6,4.6,1.2, 0,4.2,-8.4, matDoor,false);
+    box(g,3.6,4.6,1.2, 0,4.2, 8.4, matDoor,false);
+    box(g,1.2,4.6,3.6, -8.4,4.2,0, matDoor,false);
+    box(g,1.2,4.6,3.6,  8.4,4.2,0, matDoor,false);
     gw.add(g); GW.towers.push({name,pos:p.clone().add(new THREE.Vector3(0,20,0)),group:g});
     return g;
   }
@@ -1137,15 +1203,16 @@ const GW={path:[],towers:[],beacons:[]};
   // ── 烽火台 ×2 + 狼烟火光 ──
   [Math.floor(n*.2),Math.floor(n*.82)].forEach(idx=>{
     const p=P[idx], g=new THREE.Group(); g.position.copy(p);
-    box(g,19,15,19, 0,7.5,0, matGWTower);
-    box(g,13,2,13, 0,16,0, matGWLong,false);
+    const bbody=new THREE.Mesh(hipFrustumGeo(20,20,15.5,15.5,15),matGWTower);
+    bbody.position.y=6.5; g.add(bbody); edged(bbody);
+    box(g,13,2,13, 0,15.2,0, matGWLong,false);
     const bowl=new THREE.Mesh(new THREE.CylinderGeometry(3.4,2.4,2.2,12),matGWLong);
-    bowl.position.y=17.6; g.add(bowl);
+    bowl.position.y=17.2; g.add(bowl);
     const glow=new THREE.Mesh(new THREE.SphereGeometry(1.6,12,10),
       new THREE.MeshBasicMaterial({color:0xff8c3a,toneMapped:false}));
-    glow.position.y=19.2; g.add(glow);
-    const li=new THREE.PointLight(0xff8c3a,2.2,90,1.2); li.position.y=21; g.add(li);
-    GW.beacons.push({glow,li,y0:19.2});
+    glow.position.y=18.8; g.add(glow);
+    const li=new THREE.PointLight(0xff8c3a,2.2,90,1.2); li.position.y=20.5; g.add(li);
+    GW.beacons.push({glow,li,y0:18.8});
     gw.add(g);
   });
 }
