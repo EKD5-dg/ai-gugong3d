@@ -1388,6 +1388,26 @@ function terrainH(x,z){
       SI.push(p.clone()); PRI.push(perp[i].clone()); THI.push(thi);
     }
   }
+  // 按弧长 3 单位重采样：陡坡/弯道处环距致密，曲面平滑且贴地无豁口
+  {
+    const S2=[SI[0].clone()], P2=[PRI[0].clone()], T2=[THI[0]];
+    let acc=0, next=3;
+    for(let i=1;i<SI.length;i++){
+      const a=SI[i-1], b=SI[i], d=a.distanceTo(b), end=acc+d;
+      while(next<=end){
+        const t=(next-acc)/d;
+        if(t>1e-6&&t<=1){
+          S2.push(new THREE.Vector3().lerpVectors(a,b,t));
+          P2.push(new THREE.Vector3().lerpVectors(PRI[i-1],PRI[i],t).normalize());
+          T2.push(THI[i-1]+(THI[i]-THI[i-1])*t);
+        }
+        next+=3;
+      }
+      acc=end;
+    }
+    S2.push(SI[SI.length-1].clone()); P2.push(PRI[SI.length-1].clone()); T2.push(THI[THI.length-1]);
+    SI.length=0; SI.push(...S2); PRI.length=0; PRI.push(...P2); THI.length=0; THI.push(...T2);
+  }
   // 条带：S 采样 / PR 横向法线 / TH 每采样顶高
   // 主体墙（embed 省略时）：底边逐顶点取 terrainH——地面在哪墙根在哪，陡坡不再悬空穿帮
   function ribbon(S,PR,TH,baseHalf,topHalf,mat,embed){
@@ -2057,12 +2077,13 @@ function animate(){
     lastLook.copy(tl.getPointAt(tourT));
     camera.lookAt(lastLook);
   }
-  // 扫描特效
+  // 扫描特效（贴地雷达波，不切割建筑主体）
   if(state.scan&&fx.slab.visible){
-    const range=activeWorld==='wall'?270:130;
+    const range=activeWorld==='wall'?60:22;
     const sy=((t*.16)%1)*range;
     fx.slab.position.y=sy;
-    fx.slab.material.opacity=.028+.02*Math.sin(t*2.2);
+    const fade=1-.75*(sy/range);
+    fx.slab.material.opacity=(.05*fade)*(0.8+0.2*Math.sin(t*2.2));
   }
   fx.rings.forEach(r=>r.visible=state.scan);
   if(state.scan){
@@ -2119,6 +2140,7 @@ window.__r3={renderer,scene,camera,controls,composer};
 window.__THREE=THREE;
 window.__animate=animate; // 手动步进（rAF 被系统冻结时用于验证）
 window.__dbg=()=>({aw:activeWorld,wk:Object.keys(WORLDS),has:!!WORLDS[activeWorld],wpois:WORLDS[activeWorld]?WORLDS[activeWorld].pois.length:-1});
+window.__finishGrow=()=>{ growing=false; city.scale.y=1; clock.getDelta(); };
 
 /* ═══════════ 入场 ═══════════ */
 buildMarkers(); rebuildViewButtons();
