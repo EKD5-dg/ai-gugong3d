@@ -274,7 +274,7 @@ catch(e){
   document.getElementById('ld-msg').textContent='当前环境不支持 WebGL，无法渲染 3D 场景';
   throw e;
 }
-renderer.setPixelRatio(Math.min(devicePixelRatio,1.75));
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
 renderer.setSize(innerWidth,innerHeight);
 renderer.info.autoReset=false;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -324,7 +324,7 @@ const hemi=new THREE.HemisphereLight(0x7fb2e8, 0x0b0f1a, .85); scene.add(hemi);
 const amb=new THREE.AmbientLight(0x1c2740, .68); scene.add(amb);
 const sun = new THREE.DirectionalLight(0xffe8c0, 1.35); sun.position.set(340,460,260); scene.add(sun);
 sun.castShadow = true;
-sun.shadow.mapSize.set(4096,4096);
+sun.shadow.mapSize.set(2048,2048);
 sun.shadow.camera.left=-640; sun.shadow.camera.right=640;
 sun.shadow.camera.top=660;  sun.shadow.camera.bottom=-660;
 sun.shadow.camera.near=60;  sun.shadow.camera.far=1700;
@@ -620,11 +620,12 @@ function edged(mesh,m){
 }
 function sh(m){ m.castShadow=true; m.receiveShadow=true; return m; }
 function box(parent,w,h,d,x,y,z,m,edge=true){
-  // 圆角棱柱：消除生硬的直角切边感
+  // 圆角棱柱：消除生硬的直角切边感（2 段圆角；小件不投影以减轻阴影 pass）
   const r=Math.min(Math.max(Math.min(w,h,d)*.07,.08), Math.min(w,h,d)*.45);
-  const g=new THREE.Mesh(new RoundedBoxGeometry(w,h,d,4,r),m);
+  const g=new THREE.Mesh(new RoundedBoxGeometry(w,h,d,2,r),m);
   g.position.set(x,y,z);
-  g.castShadow=true; g.receiveShadow=true;
+  g.castShadow = Math.max(w,h,d)>=2;
+  g.receiveShadow=true;
   parent.add(g); return g;
 }
 // 庑殿顶：六段举折凹曲线（脊陡檐缓），顶点环共享 + 统一朝外绕序，平滑法线
@@ -2181,7 +2182,7 @@ addEventListener('keyup',e=>{ fps.keys.delete(e.key.toLowerCase()); });
 /* ═══════════ 主循环 ═══════════ */
 const clock=new THREE.Clock();
 let growing=false, growT=0;
-let frames=0, fpsT=0;
+let frames=0, fpsT=0, quality=2, qCooldown=0;
 const stFps=document.getElementById('st-fps'), stTri=document.getElementById('st-tri'),
       stCall=document.getElementById('st-call'), stCam=document.getElementById('st-cam');
 const tmpV=new THREE.Vector3();
@@ -2264,6 +2265,8 @@ function animate(){
 
   controls.update();
 
+  // POI 标注投影（标注关闭时跳过）
+  if(state.labels){
   for(let i=0;i<poiEls.length;i++){
     tmpV.copy(WORLDS[activeWorld].pois[i].v3).project(camera);
     const el=poiEls[i];
@@ -2276,16 +2279,28 @@ function animate(){
     el.style.left=((tmpV.x*.5+.5)*innerWidth)+'px';
     el.style.top =((-tmpV.y*.5+.5)*innerHeight)+'px';
   }
+  }
 
   composer.render();
 
   frames++; fpsT+=dt;
   if(fpsT>=.5){
-    stFps.textContent=Math.round(frames/fpsT);
+    const val=Math.round(frames/fpsT);
+    stFps.textContent=val;
     stTri.textContent=renderer.info.render.triangles.toLocaleString();
     stCall.textContent=renderer.info.render.calls;
     stCam.textContent=`X ${camera.position.x.toFixed(0)} · Y ${camera.position.y.toFixed(0)} · Z ${camera.position.z.toFixed(0)}`;
     frames=0; fpsT=0;
+    // 自适应降档：持续低帧自动减负（高配机不受影响）
+    if(qCooldown>0) qCooldown-=.5;
+    if(val<25&&qCooldown<=0&&quality>0){
+      quality--; qCooldown=8;
+      if(quality===1){ renderer.setPixelRatio(1.15); composer.setPixelRatio(1.15); }
+      else if(quality===0){
+        renderer.shadowMap.enabled=false; sun.castShadow=false;
+        scene.traverse(o=>{ if(o.material)(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.needsUpdate=true); });
+      }
+    }
   }
   renderer.info.reset();
 }
