@@ -276,6 +276,7 @@ sun.shadow.camera.top=660;  sun.shadow.camera.bottom=-660;
 sun.shadow.camera.near=60;  sun.shadow.camera.far=1700;
 sun.shadow.bias=-0.0006; sun.shadow.normalBias=.8;
 const fill = new THREE.DirectionalLight(0x9fd0ff, .55); fill.position.set(60,160,-520); scene.add(fill);
+const fill2 = new THREE.DirectionalLight(0xbfd8ff, .32); fill2.position.set(-120,180,560); scene.add(fill2); // 北向补光：照亮背面/内墙
 const rim = new THREE.DirectionalLight(0x3fd8ff, .32);  rim.position.set(-380,300,-360); scene.add(rim);
 
 /* ═══════════ 程序化纹理工厂（每一块砖 / 每一片瓦都由此生成） ═══════════ */
@@ -521,10 +522,11 @@ const matCouplet = matWith('couplet',()=>std({map:texCouplet,roughness:.7}));
 const throneStone= matWith('tstone',()=>std({color:0xcabfa6,map:rep(texStone,3,3),roughness:.7}));
 
 const edgeMat=new THREE.LineBasicMaterial({color:0x59e2ff,transparent:true,opacity:.42,toneMapped:false});
+const edgeMatG=new THREE.LineBasicMaterial({color:0x2e8db0,transparent:true,opacity:.4,toneMapped:false}); // 长城夜景专用暗描边（弱化水晶感）
 
 /* ═══════════ 几何工具（含 UV，让砖瓦纹理落地） ═══════════ */
-function edged(mesh){
-  const e=new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry,28),edgeMat);
+function edged(mesh,m){
+  const e=new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry,28), m||edgeMat);
   mesh.add(e); return mesh;
 }
 function sh(m){ m.castShadow=true; m.receiveShadow=true; return m; }
@@ -534,27 +536,23 @@ function box(parent,w,h,d,x,y,z,m,edge=true){
   g.castShadow=true; g.receiveShadow=true;
   parent.add(g); if(edge)edged(g); return g;
 }
-// 庑殿顶：六段举折凹曲线（脊陡檐缓），indexed 平滑法线
-function hipRoofGeo(w,d,h,ridge=.58,curve=1.65,N=6){
+// 庑殿顶：六段举折凹曲线（脊陡檐缓），顶点环共享 + 统一朝外绕序，平滑法线
+function hipRoofGeo(w,d,h,ridge=.58,curve=2.05,N=8){
   const rw=(w/2)*ridge, pos=[],uv=[],idx=[];
   const ring=(s)=>{
     const zh=d/2*(1-s), xh=w/2+(rw-w/2)*s, y=h*Math.pow(s,curve);
-    return [[-xh,y,zh],[xh,y,zh],[xh,y,-zh],[-xh,y,-zh]];
+    pos.push(-xh,y,zh,  xh,y,zh,  xh,y,-zh,  -xh,y,-zh);
+    uv.push(-xh/5,zh/5,  xh/5,zh/5,  xh/5,-zh/5,  -xh/5,-zh/5);
   };
-  const rings=[]; for(let k=0;k<=N;k++) rings.push(ring(k/N));
-  const quad=(p,q,r,s)=>{
-    const b=pos.length/3;
-    pos.push(...p,...q,...r, ...p,...r,...s);
-    uv.push(p[0]/5,p[2]/5, q[0]/5,q[2]/5, r[0]/5,r[2]/5,
-            p[0]/5,p[2]/5, r[0]/5,r[2]/5, s[0]/5,s[2]/5);
-    idx.push(b,b+1,b+2, b,b+2,b+3);
-  };
+  for(let k=0;k<=N;k++) ring(k/N);
+  const vi=(k,c)=>k*4+c;
   for(let k=0;k<N;k++){
-    const A=rings[k],B=rings[k+1];
-    quad(A[0],A[1],B[1],B[0]);
-    quad(A[2],A[3],B[3],B[2]);
-    quad(A[3],A[0],B[0],B[3]);
-    quad(A[1],A[2],B[2],B[1]);
+    const a=vi(k,0),b=vi(k,1),c=vi(k,2),dd=vi(k,3);
+    const a2=vi(k+1,0),b2=vi(k+1,1),c2=vi(k+1,2),d2=vi(k+1,3);
+    idx.push(a,b,b2, a,b2,a2);      // 前坡 (+z)
+    idx.push(c,dd,d2, c,d2,c2);     // 后坡 (-z)
+    idx.push(dd,a,a2, dd,a2,d2);    // 左坡 (-x)
+    idx.push(b,c,c2, b,c2,b2);      // 右坡 (+x)
   }
   const g=new THREE.BufferGeometry();
   g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
@@ -562,27 +560,26 @@ function hipRoofGeo(w,d,h,ridge=.58,curve=1.65,N=6){
   g.setIndex(idx); g.computeVertexNormals();
   return g;
 }
-// 四面坡台形（台基/城台直壁；curve>1 时带举折，用于重檐下檐）
-function hipFrustumGeo(w1,d1,w2,d2,h,curve=1){
+// 四面坡台形（台基/城台直壁；curve>1 带举折用于重檐下檐），顶点共享、绕序朝外
+function hipFrustumGeo(w1,d1,w2,d2,h,curve=1,N=8){
   const pos=[],uv=[],idx=[];
   const ring=(s)=>{
     const ww=w1+(w2-w1)*s, dd=d1+(d2-d1)*s, y=h*Math.pow(s,curve);
-    return [[-ww/2,y,dd/2],[ww/2,y,dd/2],[ww/2,y,-dd/2],[-ww/2,y,-dd/2]];
+    pos.push(-ww/2,y,dd/2,  ww/2,y,dd/2,  ww/2,y,-dd/2,  -ww/2,y,-dd/2);
+    uv.push(-ww/10,dd/10,  ww/10,dd/10,  ww/10,-dd/10,  -ww/10,-dd/10);
   };
-  const rings=[]; for(let k=0;k<=8;k++) rings.push(ring(k/8));
-  const quad=(p,q,r,s)=>{
-    const b=pos.length/3;
-    pos.push(...p,...q,...r, ...p,...r,...s);
-    uv.push(p[0]/5,p[2]/5, q[0]/5,q[2]/5, r[0]/5,r[2]/5,
-            p[0]/5,p[2]/5, r[0]/5,r[2]/5, s[0]/5,s[2]/5);
-    idx.push(b,b+1,b+2, b,b+2,b+3);
-  };
-  for(let k=0;k<8;k++){
-    const A=rings[k],B=rings[k+1];
-    quad(A[0],A[1],B[1],B[0]); quad(A[2],A[3],B[3],B[2]);
-    quad(A[3],A[0],B[0],B[3]); quad(A[1],A[2],B[2],B[1]);
+  for(let k=0;k<=N;k++) ring(k/N);
+  const vi=(k,c)=>k*4+c;
+  for(let k=0;k<N;k++){
+    const a=vi(k,0),b=vi(k,1),c=vi(k,2),dd=vi(k,3);
+    const a2=vi(k+1,0),b2=vi(k+1,1),c2=vi(k+1,2),d2=vi(k+1,3);
+    idx.push(a,b,b2, a,b2,a2);
+    idx.push(c,dd,d2, c,d2,c2);
+    idx.push(dd,a,a2, dd,a2,d2);
+    idx.push(b,c,c2, b,c2,b2);
   }
-  quad(rings[8][0],rings[8][1],rings[8][2],rings[8][3]);
+  const t0=vi(N,0),t1=vi(N,1),t2=vi(N,2),t3=vi(N,3);
+  idx.push(t0,t2,t1, t0,t3,t2);   // 顶面（+y）
   const g=new THREE.BufferGeometry();
   g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
   g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
@@ -590,24 +587,22 @@ function hipFrustumGeo(w1,d1,w2,d2,h,curve=1){
   return g;
 }
 // 攒尖顶：曲线收分至宝顶
-function pyramidGeo(w,d,h,curve=1.65,N=6){
+function pyramidGeo(w,d,h,curve=2.05,N=8){
   const pos=[],uv=[],idx=[];
   const ring=(s)=>{
     const a=1-s, y=h*Math.pow(s,curve);
-    return [[-w/2*a,y,d/2*a],[w/2*a,y,d/2*a],[w/2*a,y,-d/2*a],[-w/2*a,y,-d/2*a]];
+    pos.push(-w/2*a,y,d/2*a,  w/2*a,y,d/2*a,  w/2*a,y,-d/2*a,  -w/2*a,y,-d/2*a);
+    uv.push(-w/10*a,d/10*a,  w/10*a,d/10*a,  w/10*a,-d/10*a,  -w/10*a,-d/10*a);
   };
-  const rings=[]; for(let k=0;k<=N;k++) rings.push(ring(k/N));
-  const quad=(p,q,r,s)=>{
-    const b=pos.length/3;
-    pos.push(...p,...q,...r, ...p,...r,...s);
-    uv.push(p[0]/5,p[2]/5, q[0]/5,q[2]/5, r[0]/5,r[2]/5,
-            p[0]/5,p[2]/5, r[0]/5,r[2]/5, s[0]/5,s[2]/5);
-    idx.push(b,b+1,b+2, b,b+2,b+3);
-  };
+  for(let k=0;k<=N;k++) ring(k/N);
+  const vi=(k,c)=>k*4+c;
   for(let k=0;k<N;k++){
-    const A=rings[k],B=rings[k+1];
-    quad(A[0],A[1],B[1],B[0]); quad(A[1],A[2],B[2],B[1]);
-    quad(A[2],A[3],B[3],B[2]); quad(A[3],A[0],B[0],B[3]);
+    const a=vi(k,0),b=vi(k,1),c=vi(k,2),dd=vi(k,3);
+    const a2=vi(k+1,0),b2=vi(k+1,1),c2=vi(k+1,2),d2=vi(k+1,3);
+    idx.push(a,b,b2, a,b2,a2);
+    idx.push(b,c,c2, b,c2,b2);
+    idx.push(c,dd,d2, c,d2,c2);
+    idx.push(dd,a,a2, dd,a2,d2);
   }
   const g=new THREE.BufferGeometry();
   g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
@@ -801,7 +796,7 @@ function palace(o){
   eaveDecor(g,w,d,topY+bodyH-1.3,o.dougong);
   let rt=topY+bodyH;
   if(double){
-    const fr=sh(new THREE.Mesh(hipFrustumGeo(w+6,d+6,Math.max(w-18,6),Math.max(d-18,6),4.4,1.5),rm));
+    const fr=sh(new THREE.Mesh(hipFrustumGeo(w+6,d+6,Math.max(w-18,6),Math.max(d-18,6),4.4,1.7),rm));
     fr.position.y=rt; g.add(fr);
     eaveCorners(g,w+6,d+6,rt+.2);
     rt+=4.4;
@@ -1215,7 +1210,7 @@ const GW={path:[],towers:[],beacons:[]};
       const p=samples[i], thi=getTopH(i);
       if(i<samples.length-1){
         const q=samples[i+1], pr=perp[i], pr2=perp[i+1], thj=getTopH(i+1);
-        const steps=Math.max(1,Math.ceil(Math.abs(q.y-p.y)/6));
+        const steps=Math.max(1,Math.ceil(Math.abs(q.y-p.y)/4.5));
         for(let k=0;k<steps;k++){
           const t=k/steps;
           S.push(new THREE.Vector3().lerpVectors(p,q,t));
@@ -1290,11 +1285,11 @@ const GW={path:[],towers:[],beacons:[]};
     const p=P[idx], g=new THREE.Group(); g.position.copy(p);
     const h=10.5+((idx*7)%3);
     const body=new THREE.Mesh(hipFrustumGeo(17,17,13,13,h),matGWTower);
-    body.position.y=h/2-1; g.add(body); edged(body);
+    body.position.y=h/2-1; g.add(body); edged(body,edgeMatG);
     const slab=new THREE.Mesh(new THREE.BoxGeometry(15.4,1,15.4),matGWLong);
-    slab.position.y=h-.5; g.add(slab); edged(slab);
+    slab.position.y=h-.5; g.add(slab); edged(slab,edgeMatG);
     const room=new THREE.Mesh(hipFrustumGeo(10.6,10.6,9,9,4.4),matGWTower);
-    room.position.y=h+2.2; g.add(room); edged(room);
+    room.position.y=h+2.2; g.add(room); edged(room,edgeMatG);
     for(const [dx,dz,l] of [[0,-7.4,14],[0,7.4,14],[-7.4,0,14],[7.4,0,14]])
       box(g,dz?l:.7,.85,dz?.7:l, dx,h+.35,dz, matGWMerlon,false);
     box(g,3.6,4.6,1.2, 0,4.2,-8.4, matDoor,false);
@@ -1338,7 +1333,7 @@ const GW={path:[],towers:[],beacons:[]};
   [Math.floor(n*.2),Math.floor(n*.82)].forEach(idx=>{
     const p=P[idx], g=new THREE.Group(); g.position.copy(p);
     const bbody=new THREE.Mesh(hipFrustumGeo(20,20,15.5,15.5,15),matGWTower);
-    bbody.position.y=6.5; g.add(bbody); edged(bbody);
+    bbody.position.y=6.5; g.add(bbody); edged(bbody,edgeMatG);
     box(g,13,2,13, 0,15.2,0, matGWLong,false);
     const bowl=new THREE.Mesh(new THREE.CylinderGeometry(3.4,2.4,2.2,12),matGWLong);
     bowl.position.y=17.2; g.add(bowl);
@@ -1570,7 +1565,7 @@ function toggleState(k){
 }
 function setXray(on){
   solidMats.forEach(m=>{ m.transparent=on; m.opacity=on?.07:1; m.depthWrite=!on; m.needsUpdate=true; });
-  edgeMat.opacity=on?.95:.5;
+  edgeMat.opacity=on?.95:.42; edgeMatG.opacity=on?.85:.4;
 }
 renderer.domElement.addEventListener('pointerdown',()=>{
   poiLayer.classList.remove('dim');
@@ -1697,6 +1692,7 @@ function animate(){
 animate();
 window.__APP_READY__=true;
 window.__gw=gw; window.__city=city;   // 调试钩子
+window.__r3={renderer,scene,camera,controls,composer};
 
 /* ═══════════ 入场 ═══════════ */
 buildMarkers(); rebuildViewButtons();
