@@ -583,6 +583,8 @@ function roofMat(key,tex,rx,ry,glow){ return matWith(key,()=>std({map:rep(tex,rx
 
 const matWall    = brickMat(4,2);
 const matWallBig = brickMat(12,2.5);
+const matWallWarm= matWith('wallWarm',()=>std({map:rep(texBrick,4,2),color:0xc4958a,roughness:.82})); // 后宫偏暖
+const matWallMuted=matWith('wallMuted',()=>std({map:rep(texBrick,3,1.5),color:0xa8877a,roughness:.88})); // 六宫偏灰
 const matWallLong= brickMat(40,2.2);
 const matGWWall  = gwBrickMat(4,2);
 const matGWTower = gwBrickMat(3,2.4);
@@ -592,6 +594,7 @@ const matGWMerlon= gwBrickMat(1,1.2);
 const matGWTree  = matWith('gwtree',()=>std({color:0xffffff,roughness:1}));
 const matGold    = roofMat('gold',texRoof,1,1,0x1a1204); matGold.side=THREE.DoubleSide;
 const matGoldG   = roofMat('goldg',texRoofG,1,1,0x0a0d10); matGoldG.side=THREE.DoubleSide;
+const matGoldAmber=roofMat('amber',texRoof,1,1,0x2a1400); matGoldAmber.side=THREE.DoubleSide; matGoldAmber.color=new THREE.Color(0xd4a860); // 后宫偏琥珀
 const matGoldDark= std({color:0x93702c,roughness:.55,metalness:.3});
 const matWallDark= std({color:0x571219,roughness:.85});
 const matMarble  = stoneMat(4,4);
@@ -1292,11 +1295,11 @@ const matPlaza2  =std({map:rep(texPlaza,7,9),roughness:.9,color:0xd8e4f4});
   stairs(t,26,6,-96); stairs(t,18,6,96);
   balustrade(t,79.2,179.2,6);
   city.add(t);
-  const qg=palace({w:46,d:24,bodyH:10,tiers:0,roofH:8.5,y:6,z:165,bays:9,
+  const qg=palace({w:46,d:24,bodyH:10,tiers:0,roofH:8.5,y:6,z:165,bays:9,bm:matWallWarm,rm:matGoldAmber,
     interior:true,throne:true,plaque:true,doorW:7.5,doorH:6.2,dougong:true});
   qg.userData.poi=7; qg.userData.world='gugong'; city.add(qg);
-  const jt=palace({w:24,d:24,bodyH:8,tiers:0,pyr:true,roofH:10,y:6,z:215,dougong:true}); jt.userData.poi=8; jt.userData.world='gugong'; city.add(jt);
-  const kn=palace({w:42,d:22,bodyH:9,tiers:0,roofH:8,y:6,z:265,dougong:true}); kn.userData.poi=9; kn.userData.world='gugong'; city.add(kn);
+  const jt=palace({w:24,d:24,bodyH:8,tiers:0,pyr:true,roofH:10,y:6,z:215,dougong:true,bm:matWallWarm,rm:matGoldAmber}); jt.userData.poi=8; jt.userData.world='gugong'; city.add(jt);
+  const kn=palace({w:42,d:22,bodyH:9,tiers:0,roofH:8,y:6,z:265,dougong:true,bm:matWallWarm,rm:matGoldAmber}); kn.userData.poi=9; kn.userData.world='gugong'; city.add(kn);
 }
 // —— 御花园·钦安殿
 { const g=palace({w:22,d:16,bodyH:7,tiers:1,pyr:true,roofH:6,z:392,dougong:true}); g.userData.poi=10; g.userData.world='gugong'; city.add(g); }
@@ -1317,7 +1320,7 @@ city.add(gate({x:-376,z:-150,w:48,d:20,h:10,rot:Math.PI/2,towerH:5}));
   let vi=0;
   for(const sx of [210,330]) for(const sz of [150,230,310]){
     const wv=40+(vi%3)*5, dv=30+(vi%2)*6, rh=4.4+(vi%3)*.7;
-    city.add(palace({w:wv,d:dv,bodyH:7,tiers:1,roofH:rh,x:s*sx,z:sz}));
+    city.add(palace({w:wv,d:dv,bodyH:7,tiers:1,roofH:rh,x:s*sx,z:sz,bm:matWallMuted}));
     compound(s*sx, sz, wv, dv);
     vi++;
   }
