@@ -475,16 +475,24 @@ const texPlaza=canvasTex(512,512,(g,w,h)=>{
     g.fillStyle='rgba(130,190,230,.05)'; g.fillRect(x*s+3,y*s+3,s-6,3);
   }
 });
-// 长城马道浅灰石板（顶面可读性）
-const texPave=canvasTex(256,256,(g,w,h)=>{
-  g.fillStyle='#4a525b'; g.fillRect(0,0,w,h);
-  const s=64;
-  for(let y=0;y<h/s;y++)for(let x=0;x<w/s;x++){
-    const l=.85+Math.random()*.3;
-    g.fillStyle=`rgb(${(138*l)|0},${(146*l)|0},${(154*l)|0})`;
-    g.fillRect(x*s+2,y*s+2,s-4,s-4);
-    g.fillStyle='rgba(255,255,255,.08)'; g.fillRect(x*s+2,y*s+2,s-4,2);
-    g.fillStyle='rgba(0,0,0,.28)'; g.fillRect(x*s+2,y*s+s-6,s-4,4);
+// 长城马道浅灰石板（自然不规则石板，非方格玻璃）
+const texPave=canvasTex(512,512,(g,w,h)=>{
+  g.fillStyle='#4b525a'; g.fillRect(0,0,w,h);
+  const rows=6, cols=4, rh=h/rows, cw=w/cols;
+  for(let y=0;y<rows;y++)for(let x=0;x<cols;x++){
+    // 每块石板尺寸微差 + 交错排列
+    const off=(y%2)*cw*.5;
+    const lx=x*cw+off, ly=y*rh;
+    const lw=cw-4, lh=rh-4;
+    const l=.78+Math.random()*.38;
+    g.fillStyle=`rgb(${(132*l)|0},${(140*l)|0},${(148*l)|0})`;
+    g.fillRect(lx+2,ly+2,lw,lh);
+    // 石面质感（斜向磨痕）
+    g.strokeStyle='rgba(255,255,255,.04)'; g.lineWidth=1;
+    for(let i=0;i<3;i++){ g.beginPath(); g.moveTo(lx+4,ly+lh/3*(i+1)); g.lineTo(lx+lw-4,ly+lh/3*(i+1)); g.stroke(); }
+    // 阴影缝
+    g.fillStyle='rgba(0,0,0,.18)'; g.fillRect(lx+2,ly+lh-3,lw,3);
+    g.fillStyle='rgba(255,255,255,.06)'; g.fillRect(lx+2,ly+2,lw,2);
   }
 });
 // 格扇门/窗（朱红格心 + 金线菱花）
@@ -590,7 +598,7 @@ const matGWWall  = gwBrickMat(4,2);
 const matGWTower = gwBrickMat(3,2.4);
 const matGWLong  = gwBrickMat(40,2.4);
 const matGWRibbon= matWith('gwribbon',()=>std({map:rep(texGWBrick,1,1),roughness:.85,side:THREE.DoubleSide}));
-const matGWMerlon= gwBrickMat(1,1.2);
+const matGWMerlon= std({color:0x8a929c,roughness:.82,emissive:0x11141a});   // 垛口：整石哑光（非砖纹像素块）
 const matGWTree  = matWith('gwtree',()=>std({color:0xffffff,roughness:1}));
 const matGold    = roofMat('gold',texRoof,1,1,0x1a1204); matGold.side=THREE.DoubleSide;
 const matGoldG   = roofMat('goldg',texRoofG,1,1,0x0a0d10); matGoldG.side=THREE.DoubleSide;
@@ -1554,7 +1562,7 @@ function terrainH(x,z){
     ribbon(parS,PRI,SI.map(()=>1.15), .7,.55, .55, matGWRibbon);
   }
   {  // 垛口：沿细分采样每 2.4 单位摆放（段内插值），Y 严格贴合女墙顶
-    const merG=new THREE.BoxGeometry(.95,1,.5);
+    const merG=new THREE.BoxGeometry(1.3,1.4,.7);
     const cap=3200;
     const imM=new THREE.InstancedMesh(merG,matGWMerlon,cap);
     const M=new THREE.Matrix4(), qs=new THREE.Quaternion(), up=new THREE.Vector3(0,1,0), S1=new THREE.Vector3();
