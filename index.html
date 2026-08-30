@@ -1453,7 +1453,7 @@ function terrainH(x,z){
   }
   // 自适应细分一次成型：墙体/女墙/垛口共用同一组采样，保证严丝合缝
   const SI=[],PRI=[],THI=[];
-  const wallTop=i=>6.8+.9*Math.sin(i*.23)+.5*Math.sin(i*.07); // 墙高随里程起伏
+  const wallTop=i=>8.5+1.1*Math.sin(i*.23)+.6*Math.sin(i*.07); // 墙高随里程起伏（更雄伟）
   for(let i=0;i<n;i++){
     const p=P[i], thi=wallTop(i);
     if(i<n-1){
@@ -1491,7 +1491,7 @@ function terrainH(x,z){
   }
   // 条带：S 采样 / PR 横向法线 / TH 每采样顶高
   // 主体墙（embed 省略时）：底边逐顶点取 terrainH——地面在哪墙根在哪，陡坡不再悬空穿帮
-  function ribbon(S,PR,TH,baseHalf,topHalf,mat,embed){
+  function ribbon(S,PR,TH,baseHalf,topHalf,embed,mat){
     const pos=[],uv=[],idx=[]; const m=S.length;
     let acc=0;
     for(let i=0;i<m;i++){
@@ -1524,7 +1524,7 @@ function terrainH(x,z){
     g.setIndex(idx); g.computeVertexNormals();
     gw.add(new THREE.Mesh(g,mat));
   }
-  ribbon(SI,PRI,THI, 5.6,3.7, undefined, matGWRibbon);   // 主体：底边逐顶点贴地形的挡土墙
+  ribbon(SI,PRI,THI, 8,5, undefined, matGWRibbon);   // 主体：底宽16→顶宽10，高8（贴地形挡土墙）
   { // 马道铺装（平滑斜坡石板面）
     const matGWDeck=matWith('gwdeck',()=>std({map:rep(texPave,1,1),roughness:.92,side:THREE.DoubleSide}));
     const pos=[],uv=[],idx=[]; let acc=0; const m=SI.length;
@@ -1543,8 +1543,8 @@ function terrainH(x,z){
   }
   for(const side of [1,-1]){                        // 两侧女墙
     const parS=SI.map((p,i)=>new THREE.Vector3(
-      p.x+PRI[i].x*3.2*side, p.y+THI[i]-.25, p.z+PRI[i].z*3.2*side));
-    ribbon(parS,PRI,SI.map(()=>1.15), .55,.5, .55, matGWRibbon);
+      p.x+PRI[i].x*4.5*side, p.y+THI[i]-.25, p.z+PRI[i].z*4.5*side));
+    ribbon(parS,PRI,SI.map(()=>1.15), .7,.55, .55, matGWRibbon);
   }
   {  // 垛口：沿细分采样每 2.4 单位摆放（段内插值），Y 严格贴合女墙顶
     const merG=new THREE.BoxGeometry(.95,1,.5);
@@ -1569,7 +1569,7 @@ function terrainH(x,z){
           if(mi>=cap) break;
           const hh=.72+((mi*7)%3)*.13;
           S1.set(1,hh,1);
-          M.compose(new THREE.Vector3(x+prx*3.2*side,yTop+hh/2,z+prz*3.2*side),qs,S1);
+          M.compose(new THREE.Vector3(x+prx*4.5*side,yTop+hh/2,z+prz*4.5*side),qs,S1);
           imM.setMatrixAt(mi++,M);
         }
       }
@@ -1580,21 +1580,21 @@ function terrainH(x,z){
   // ── 敌楼（每 200 单位一座，收分梯台身）──
   function tower(idx,name,poi){
     const p=P[idx], g=new THREE.Group(); g.position.copy(p);
-    const h=10.5+((idx*7)%3);
-    const body=new THREE.Mesh(hipFrustumGeo(17,17,13,13,h),matGWTower);
-    body.position.y=h/2-1; g.add(body); edged(body,edgeMatG);
-    const slab=new THREE.Mesh(new THREE.BoxGeometry(15.4,1,15.4),matGWLong);
-    slab.position.y=h-.5; g.add(slab); edged(slab,edgeMatG);
-    const room=new THREE.Mesh(hipFrustumGeo(10.6,10.6,9,9,4.4),matGWTower);
-    room.position.y=h+2.2; g.add(room); edged(room,edgeMatG);
-    for(const [dx,dz,l] of [[0,-7.4,14],[0,7.4,14],[-7.4,0,14],[7.4,0,14]])
-      box(g,dz?l:.7,.85,dz?.7:l, dx,h+.35,dz, matGWMerlon,false);
-    box(g,3.2,4.2,1.4, 0,3.9,-7.6, matDoor,false);
-    box(g,3.2,4.2,1.4, 0,3.9, 7.6, matDoor,false);
-    box(g,1.4,4.2,3.2, -7.6,3.9,0, matDoor,false);
-    box(g,1.4,4.2,3.2,  7.6,3.9,0, matDoor,false);
+    const h=13+((idx*7)%3);
+    const body=new THREE.Mesh(hipFrustumGeo(21,21,16,16,h),matGWTower);
+    body.position.y=h/2-1.2; g.add(body); edged(body,edgeMatG);
+    const slab=new THREE.Mesh(new THREE.BoxGeometry(18,1.2,18),matGWLong);
+    slab.position.y=h-.6; g.add(slab); edged(slab,edgeMatG);
+    const room=new THREE.Mesh(hipFrustumGeo(13,13,11,11,5),matGWTower);
+    room.position.y=h+2.4; g.add(room); edged(room,edgeMatG);
+    for(const [dx,dz,l] of [[0,-8.8,16.5],[0,8.8,16.5],[-8.8,0,16.5],[8.8,0,16.5]])
+      box(g,dz?l:.8,1.1,dz?.8:l, dx,h+.5,dz, matGWMerlon,false);
+    box(g,3.6,4.8,1.4, 0,4.6,-9.2, matDoor,false);
+    box(g,3.6,4.8,1.4, 0,4.6, 9.2, matDoor,false);
+    box(g,1.4,4.8,3.6, -9.2,4.6,0, matDoor,false);
+    box(g,1.4,4.8,3.6,  9.2,4.6,0, matDoor,false);
     g.userData={poi,world:'wall'};
-    gw.add(g); GW.towers.push({name,pos:p.clone().add(new THREE.Vector3(0,20,0)),group:g});
+    gw.add(g); GW.towers.push({name,pos:p.clone().add(new THREE.Vector3(0,22,0)),group:g});
     return g;
   }
   const quarter=Math.floor(n/4),half=Math.floor(n/2),threeQ=Math.floor(n*3/4);
