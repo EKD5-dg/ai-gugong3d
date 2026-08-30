@@ -213,6 +213,7 @@ import { RenderPass }      from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass }      from 'three/addons/postprocessing/OutputPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
 /* ═══════════ 渲染器 / 场景 / 相机 ═══════════ */
 let renderer;
@@ -544,10 +545,12 @@ function edged(mesh,m){
 }
 function sh(m){ m.castShadow=true; m.receiveShadow=true; return m; }
 function box(parent,w,h,d,x,y,z,m,edge=true){
-  const g=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);
+  // 圆角棱柱：消除生硬的直角切边感
+  const r=Math.min(Math.max(Math.min(w,h,d)*.07,.08), Math.min(w,h,d)*.45);
+  const g=new THREE.Mesh(new RoundedBoxGeometry(w,h,d,4,r),m);
   g.position.set(x,y,z);
   g.castShadow=true; g.receiveShadow=true;
-  parent.add(g); if(edge)edged(g); return g;
+  parent.add(g); return g;
 }
 // 庑殿顶：六段举折凹曲线（脊陡檐缓），顶点环共享 + 统一朝外绕序，平滑法线
 function hipRoofGeo(w,d,h,ridge=.58,curve=2.05,N=8){
@@ -898,22 +901,88 @@ function bronzeVat(x,y,z){
   rim.rotation.x=Math.PI/2; rim.position.y=2.45;
   g.add(body,rim); city.add(g);
 }
-// 树（kind: 0 松柏 / 1 阔叶）
-function tree(x,z,s=1,kind=1){
-  const g=new THREE.Group(); g.position.set(x,0,z);
-  const t=new THREE.Mesh(new THREE.CylinderGeometry(.45*s,.65*s,3*s,6),matTrunk);
-  t.position.y=1.5*s; t.castShadow=true; g.add(t);
-  if(kind===0){ // 松柏：三层塔形
-    const c=sh(new THREE.Mesh(new THREE.ConeGeometry(2.1*s,3.4*s,8),matLeaf)); c.position.y=4.4*s; g.add(c);
-    const c2=sh(new THREE.Mesh(new THREE.ConeGeometry(1.6*s,3*s,8),matLeaf)); c2.position.y=6.6*s; g.add(c2);
-    const c3=sh(new THREE.Mesh(new THREE.ConeGeometry(1*s,2.6*s,8),matLeaf)); c3.position.y=8.6*s; g.add(c3);
-  }else{ // 阔叶：双球冠
-    const c1=sh(new THREE.Mesh(new THREE.SphereGeometry(2.5*s,10,8),matLeaf)); c1.scale.y=.85; c1.position.y=5.4*s; g.add(c1);
-    const c2=sh(new THREE.Mesh(new THREE.SphereGeometry(1.7*s,9,7),matLeaf)); c2.position.set(.9*s,7.2*s,.4*s); g.add(c2);
+// 青铜香炉（三足双耳）
+function censer(x,y,z){
+  const g=new THREE.Group(); g.position.set(x,y,z);
+  const body=new THREE.Mesh(new THREE.CylinderGeometry(1.05,.8,1.3,16),matVat);
+  body.position.y=1.75; body.castShadow=true; g.add(body);
+  const rim=new THREE.Mesh(new THREE.TorusGeometry(1.0,.13,8,20),matVat);
+  rim.rotation.x=Math.PI/2; rim.position.y=2.4; g.add(rim);
+  for(const [lx,lz] of [[-.65,.3],[.65,.3],[0,-.8]]){
+    const leg=new THREE.Mesh(new THREE.CylinderGeometry(.13,.19,1.3,8),matVat);
+    leg.position.set(lx,.55,lz); leg.rotation.z=-lx*.25; leg.rotation.x=lz*.2; g.add(leg);
+  }
+  for(const s of [-1,1]){
+    const ear=new THREE.Mesh(new THREE.TorusGeometry(.32,.09,8,14,Math.PI),matVat);
+    ear.position.set(s*1.05,2.55,0); ear.rotation.y=s*Math.PI/2; g.add(ear);
   }
   city.add(g);
 }
-// 院墙（宫各成院，前墙留门）
+// 顶点抖动（按位置哈希，共点顶点同向偏移，不裂面）
+function jitterGeo(geo,amt){
+  const p=geo.attributes.position;
+  const hsh=(a,b,c)=>{const v=Math.sin(a*12.9898+b*78.233+c*37.719)*43758.5453;return (v-Math.floor(v))*2-1;};
+  for(let i=0;i<p.count;i++){
+    const x=p.getX(i),y=p.getY(i),z=p.getZ(i);
+    p.setXYZ(i, x+hsh(x,y,z)*amt, y+hsh(y,z,x)*amt, z+hsh(z,x,y)*amt);
+  }
+  geo.computeVertexNormals();
+  return geo;
+}
+// 简易几何合并（非索引化拼装）
+function mergeGeo(items){
+  const pos=[],nor=[],uv=[];
+  for(const {geo,m} of items){
+    const g=geo.index?geo.toNonIndexed():geo;
+    const pa=g.attributes.position, na=g.attributes.normal, ua=g.attributes.uv;
+    const nm=new THREE.Matrix3().getNormalMatrix(m);
+    const v=new THREE.Vector3();
+    for(let i=0;i<pa.count;i++){
+      v.fromBufferAttribute(pa,i).applyMatrix4(m); pos.push(v.x,v.y,v.z);
+      v.fromBufferAttribute(na,i).applyMatrix3(nm).normalize(); nor.push(v.x,v.y,v.z);
+      uv.push(ua?ua.getX(i):0, ua?ua.getY(i):0);
+    }
+  }
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  g.setAttribute('normal',new THREE.Float32BufferAttribute(nor,3));
+  g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
+  return g;
+}
+// 树（kind: 0 古柏 / 1 宫槐）——皱面有机树冠 + 曲干，每棵独立色相
+function tree(x,z,s=1,kind=1){
+  const g=new THREE.Group(); g.position.set(x,0,z);
+  g.rotation.y=Math.random()*Math.PI*2;
+  const tint=new THREE.Color(kind?0x1b5a40:0x0e3d2c);
+  tint.offsetHSL((Math.random()-.5)*.05,0,(Math.random()-.5)*.08);
+  const lm=std({color:tint,roughness:.95});
+  if(kind===0){ // 古柏：塔形三层皱冠
+    const trunk=new THREE.Mesh(mergeGeo([
+      {geo:new THREE.CylinderGeometry(.3*s,.5*s,2.8*s,7),m:new THREE.Matrix4().makeTranslation(0,1.4*s,0)}
+    ]),matTrunk); trunk.castShadow=true; g.add(trunk);
+    const items=[]; let r=2.2;
+    for(let k=0;k<4;k++){
+      items.push({geo:jitterGeo(new THREE.SphereGeometry(r,9,7),.4*s),
+        m:new THREE.Matrix4().makeTranslation((Math.random()-.5)*.6*s,(3.6+k*1.5)*s,(Math.random()-.5)*.6*s)});
+      r*=.72;
+    }
+    const canopy=new THREE.Mesh(mergeGeo(items),lm); canopy.castShadow=true; g.add(canopy);
+  }else{ // 宫槐：曲干阔冠
+    const trunk=new THREE.Mesh(mergeGeo([
+      {geo:new THREE.CylinderGeometry(.3*s,.55*s,3.4*s,7),m:new THREE.Matrix4().makeTranslation(0,1.7*s,0)},
+      {geo:new THREE.CylinderGeometry(.16*s,.22*s,2.4*s,6),
+       m:new THREE.Matrix4().makeTranslation(.9*s,3.9*s,0).multiply(new THREE.Matrix4().makeRotationZ(.55))}
+    ]),matTrunk); trunk.castShadow=true; g.add(trunk);
+    const items=[];
+    for(let k=0;k<5;k++){
+      items.push({geo:jitterGeo(new THREE.SphereGeometry(1.4+Math.random()*.9,9,7),.55*s),
+        m:new THREE.Matrix4().makeTranslation((Math.random()-.5)*3.4*s,(4.7+Math.random()*1.5)*s,(Math.random()-.5)*3*s)});
+    }
+    const canopy=new THREE.Mesh(mergeGeo(items),lm); canopy.castShadow=true; g.add(canopy);
+  }
+  city.add(g);
+}
+// 院墙（宫各成院，月门拱圈）
 function compound(x,z,w,d){
   const g=new THREE.Group(); g.position.set(x,0,z);
   const W=w+20, D=d+18, h=2.4, t=1, bm=brickMat(3,1.2);
@@ -923,7 +992,8 @@ function compound(x,z,w,d){
   const seg=(W-6)/2;
   box(g,seg,h,t, -(3+seg/2),h/2,-D/2, bm,false);
   box(g,seg,h,t,  (3+seg/2),h/2,-D/2, bm,false);
-  box(g,7.5,3.1,t*1.3, 0,1.55,-D/2, bm,false); // 门头
+  const arch=new THREE.Mesh(new THREE.TorusGeometry(2.6,.34,8,22,Math.PI),matMarble); // 月门石拱
+  arch.position.set(0,1.35,-D/2); g.add(arch);
   city.add(g);
 }
 // 日晷
@@ -1064,8 +1134,9 @@ const matPlaza2  =std({map:rep(texPlaza,7,9),roughness:.9,color:0xd8e4f4});
   td.userData.poi=3; td.userData.world='gugong'; city.add(td);
   const zh=palace({w:28,d:28,bodyH:9,tiers:0,pyr:true,roofH:11,y:9,z:-45,dougong:true}); zh.userData.poi=4; zh.userData.world='gugong'; city.add(zh);
   const bh=palace({w:54,d:26,bodyH:11,tiers:0,double:true,roofH:9.5,y:9,z:25,dougong:true,bm:matWall}); bh.userData.poi=5; bh.userData.world='gugong'; city.add(bh);
-  // 铜缸陈设
+  // 铜缸陈设 + 香炉
   bronzeVat(-64,9,-152); bronzeVat(64,9,-152); bronzeVat(-64,9,18); bronzeVat(64,9,18);
+  censer(-30,9,-143); censer(30,9,-143);
 }
 // —— 乾清门 + 内墙
 {
@@ -1190,10 +1261,14 @@ const GW={path:[],towers:[],beacons:[]};
   const terrain=new THREE.Mesh(tgeo,new THREE.MeshStandardMaterial({vertexColors:true,roughness:1,
     emissive:0x10151d,emissiveIntensity:.75}));
   gw.add(terrain);
-  // 山坡散树（实例化，一处 draw call，给群山比例参照）
+  // 山坡散树（双实例化：树干+皱冠，两处 draw call，随机姿态与色相）
   {
-    const N=280, im=new THREE.InstancedMesh(new THREE.ConeGeometry(1.5,4.2,6),matGWTree,N);
-    const M=new THREE.Matrix4(), C=new THREE.Color(), Q0=new THREE.Quaternion(), S=new THREE.Vector3();
+    const N=280;
+    const canG=jitterGeo(new THREE.IcosahedronGeometry(1.9,1),.55);
+    const trkG=new THREE.CylinderGeometry(.2,.34,2.4,6);
+    const imC=new THREE.InstancedMesh(canG,matGWTree,N);
+    const imT=new THREE.InstancedMesh(trkG,matGWTree,N);
+    const M=new THREE.Matrix4(), C=new THREE.Color(), S=new THREE.Vector3();
     let seed=7; const rnd=()=>{seed=(seed*16807)%2147483647; return seed/2147483647;};
     let placed=0, guard=0;
     while(placed<N&&guard++<4000){
@@ -1203,12 +1278,14 @@ const GW={path:[],towers:[],beacons:[]};
       if(h<3||h>70) continue;
       const s=.7+rnd()*1.2;
       S.set(s,s,s);
-      M.compose(new THREE.Vector3(x,h-.2,z),Q0,S);
-      im.setMatrixAt(placed,M);
-      im.setColorAt(placed,C.setHSL(.36+rnd()*.05,.4,.07+rnd()*.07));
+      const q=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),rnd()*6.28);
+      M.compose(new THREE.Vector3(x,h+2.5*s,z),q,S); imC.setMatrixAt(placed,M);
+      M.compose(new THREE.Vector3(x,h+.9*s,z),q,S);  imT.setMatrixAt(placed,M);
+      imC.setColorAt(placed,C.setHSL(.36+rnd()*.05,.4,.08+rnd()*.07));
+      imT.setColorAt(placed,C.setHSL(.3,.25,.06+rnd()*.04));
       placed++;
     }
-    im.count=placed; gw.add(im);
+    imC.count=placed; imT.count=placed; gw.add(imC,imT);
   }
   const base=new THREE.Mesh(new THREE.ShapeGeometry(roundedShape(2800,1900,90),12),
     new THREE.MeshStandardMaterial({color:0x0a1120,roughness:.95}));
