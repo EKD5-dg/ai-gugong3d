@@ -5,6 +5,11 @@
 
 ![tech](https://img.shields.io/badge/Three.js-r170-3fe1ff) ![tech](https://img.shields.io/badge/世界-紫禁城·长城-e8c06a) ![tech](https://img.shields.io/badge/依赖-仅CDN一个-0a1120)
 
+## 在线访问
+
+- **Cloudflare Pages**：https://ai-gugong3d.pages.dev （全球 CDN，国内直连快）
+- **GitHub Pages**：https://ekd5-dg.github.io/ai-gugong3d/
+
 ## 运行方式
 
 **方式一：直接打开** —— 双击 `index.html`（Three.js 从 npmmirror CDN 加载，需联网）。
