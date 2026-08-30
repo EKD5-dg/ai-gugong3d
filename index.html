@@ -475,6 +475,28 @@ const texPave=canvasTex(256,256,(g,w,h)=>{
     g.fillStyle='rgba(0,0,0,.28)'; g.fillRect(x*s+2,y*s+s-6,s-4,4);
   }
 });
+// 格扇门/窗（朱红格心 + 金线菱花）
+const texLattice=canvasTex(256,512,(g,w,h)=>{
+  g.fillStyle='#7c1a20'; g.fillRect(0,0,w,h);
+  g.strokeStyle='#c9a24a'; g.lineWidth=10; g.strokeRect(7,7,w-14,h-14);
+  g.strokeStyle='rgba(233,196,120,.85)'; g.lineWidth=3;
+  for(let i=-h;i<w+h;i+=30){
+    g.beginPath(); g.moveTo(i,12); g.lineTo(i+h-24,h-12); g.stroke();
+    g.beginPath(); g.moveTo(i+h-24,12); g.lineTo(i,h-12); g.stroke();
+  }
+  g.fillStyle='#570d12'; g.fillRect(12,h*.44,w-24,h*.14);   // 绦环板
+  g.strokeStyle='#c9a24a'; g.lineWidth=2; g.strokeRect(12,h*.44,w-24,h*.14);
+});
+// 檐下斗拱椽望彩画带
+const texEave=canvasTex(512,64,(g,w,h)=>{
+  g.fillStyle='#142f38'; g.fillRect(0,0,w,h);
+  for(let x=6;x<w;x+=64){
+    g.fillStyle='#c9a24a'; g.fillRect(x,8,26,22);        // 坐斗
+    g.fillStyle='#8a6a2c'; g.fillRect(x+16,16,22,14);    // 出跳拱
+    g.fillStyle='#5a3c14'; g.fillRect(x+42,8,12,30);     // 椽头
+  }
+  g.fillStyle='rgba(201,162,74,.55)'; g.fillRect(0,h-6,w,6);
+});
 // "正大光明"匾
 const texPlaque=canvasTex(512,128,(g,w,h)=>{
   g.fillStyle='#38151c'; g.fillRect(0,0,w,h);
@@ -677,6 +699,18 @@ function roundedPath(t,w,h,r){
 function roundedShape(w,h,r){ return roundedPath(new THREE.Shape(),w,h,r); }
 
 /* ═══════════ 建筑构件 ═══════════ */
+// 垂脊（四条戗脊沿屋面棱线）
+function hipRidges(parent,w,d,h,ridge=.55,y0=0){
+  const q=new THREE.Quaternion(), up=new THREE.Vector3(0,1,0);
+  for(const sx of [1,-1]) for(const sz of [1,-1]){
+    const v=new THREE.Vector3(sx*(w/2)*(1-ridge),-h,sz*d/2);
+    const len=v.length(); v.normalize();
+    q.setFromUnitVectors(up,v);
+    const m=new THREE.Mesh(new THREE.CylinderGeometry(.22,.34,len*.98,6),matGoldDark);
+    m.position.set(sx*(w/2)*(1+ridge)/2, y0+h/2, sz*d/4);
+    m.quaternion.copy(q); m.castShadow=true; parent.add(m);
+  }
+}
 function stairs(parent,wdt,topY,zEdge,cx=0){
   const n=Math.min(9,Math.max(3,Math.round(topY/.8))),sh=topY/n;
   for(let j=0;j<n;j++){
@@ -704,7 +738,9 @@ function doors(parent,w,d,topY,bodyH){
 }
 // 彩画枋 + 斗拱（双跳出跳，檐下每朵斗拱都可见）
 function eaveDecor(parent,w,d,y,dougong){
-  box(parent,w+.8,1.1,d+.8, 0,y,0, matCaihua,false);
+  // 檐下彩画带：斗拱椽望纹理（替代纯色板）
+  const em=matWith('eave'+Math.round(w),()=>std({map:rep(texEave,Math.max(2,Math.round(w/9)),1),roughness:.8}));
+  box(parent,w+.8,1.1,d+.8, 0,y,0, em,false);
   if(!dougong) return;
   const nx=Math.max(4,Math.floor(w/2.6)),nz=Math.max(3,Math.floor(d/2.6));
   const pts=[];
@@ -856,6 +892,15 @@ function palace(o){
     bf.position.y=topY; g.add(bf); edged(bf);
     colRing(g,w,d,topY,bodyH);
     doors(g,w,d,topY,bodyH);
+    // 格扇门/窗满披立面（殿宇正背两面）
+    if(bodyH>=6){
+      const lm=matWith('lat'+Math.round(w)+'x'+Math.round(bodyH),
+        ()=>std({map:rep(texLattice,Math.max(2,Math.round(w/7)),1),roughness:.72}));
+      box(g,w-1.6,bodyH*.6,.3, 0,topY+bodyH*.34,-d/2-.14, lm,false);
+      box(g,w-1.6,bodyH*.6,.3, 0,topY+bodyH*.34, d/2+.14, lm,false);
+    }
+    // 裙肩收脚
+    box(g,w+.9,1,d+.9, 0,topY+.5,0, matWallDark,false);
     if(o.bays){ // 开间壁柱（表达柱网节奏）
       for(let i=0;i<=o.bays;i++){
         const px=-w/2+i*w/o.bays;
@@ -878,6 +923,7 @@ function palace(o){
     const rw2=w+(o.double?0:8), rd2=d+(o.double?0:8);
     const p=sh(new THREE.Mesh(pyramidGeo(rw2,rd2,roofH),rm));
     p.position.y=rt; g.add(p); edged(p);
+    hipRidges(g,rw2,rd2,roofH,0,rt);
     eaveCorners(g,rw2,rd2,rt+.2);
     const fin=new THREE.Mesh(new THREE.SphereGeometry(1.7,16,12),matGoldDark);
     fin.position.y=rt+roofH+1.2; g.add(fin);
@@ -885,6 +931,7 @@ function palace(o){
     const rw=w+(double?-12:8), rd=d+(double?-12:8);
     const r=sh(new THREE.Mesh(hipRoofGeo(rw,rd,roofH,.55),rm));
     r.position.y=rt; g.add(r); edged(r);
+    hipRidges(g,rw,rd,roofH,.55,rt);
     eaveCorners(g,rw,rd,rt+.2);
     const rl=rw*.55;
     box(g,rl,1.2,1.2, 0,rt+roofH+.35,0, matGoldDark,false);
@@ -896,18 +943,27 @@ function palace(o){
   }
   return g;
 }
-// 城门（城台斜收）
+// 城门（城台斜收，顶面墁石 + 压顶石框）
 function gate(o){
   const {x=0,z=0,w,d,h=11,rot=0,towerH=6,bm=matWall}=o;
   const g=new THREE.Group(); g.position.set(x,0,z); g.rotation.y=rot;
   const bf=sh(new THREE.Mesh(hipFrustumGeo(w+1.8,d+1.8,w,d,h),bm));
   g.add(bf); edged(bf);
+  // 城台顶面墁石
+  const pave=new THREE.Mesh(new THREE.PlaneGeometry(w-1.2,d-1.2),
+    matWith('gp'+w+'x'+d,()=>std({map:rep(texPave,Math.max(2,Math.round(w/5)),Math.max(2,Math.round(d/5))),roughness:.92})));
+  pave.rotation.x=-Math.PI/2; pave.position.y=h+.07; g.add(pave);
+  // 压顶石框（勾出城台轮廓）
+  box(g,w+1,.5,.8, 0,h+.2,-(d/2+.1), matMarble,false);
+  box(g,w+1,.5,.8, 0,h+.2,  d/2+.1, matMarble,false);
+  box(g,.8,.5,d+1, -(w/2+.1),h+.2,0, matMarble,false);
+  box(g,.8,.5,d+1,  (w/2+.1),h+.2,0, matMarble,false);
   [1,-1].forEach(s=>{
     box(g,w*.2,h*.6,2.4, 0,h*.3, s*(d/2-.6), matDoor,false);
     box(g,w*.12,h*.4,2,  w*.3,h*.2, s*(d/2-.4), matDoor,false);
     box(g,w*.12,h*.4,2, -w*.3,h*.2, s*(d/2-.4), matDoor,false);
   });
-  const t=palace({w:w*.62,d:d*.85,bodyH:h*.42,tiers:0,roofH:towerH,bm});
+  const t=palace({w:w*.62,d:d*.85,bodyH:h*.58,tiers:0,roofH:towerH,bm});
   t.position.y=h; g.add(t);
   return g;
 }
@@ -1158,6 +1214,12 @@ const matPlaza2  =std({map:rep(texPlaza,7,9),roughness:.9,color:0xd8e4f4});
   mk(28,70,26,66,12,  74,-53);
   mk(34,26,32,24,14, -74,-88);      // 翼端敦台
   mk(34,26,32,24,14,  74,-88);
+  // 城台顶面墁石（平台可读性）
+  const pwu=matWith('pwu',()=>std({map:rep(texPave,16,5),roughness:.92}));
+  const mkPave=(w,d,y,x,z)=>{const p=new THREE.Mesh(new THREE.PlaneGeometry(w,d),pwu);
+    p.rotation.x=-Math.PI/2; p.position.set(x,y,z); g.add(p);};
+  mkPave(118,40,16.08,0,0);
+  mkPave(24,64,12.08,-74,-54); mkPave(24,64,12.08,74,-54);
   box(g,16,11,3, 0,5.5,-21.4, matDoor,false);
   box(g,11,8,2.6, -30,4,-21.2, matDoor,false);
   box(g,11,8,2.6,  30,4,-21.2, matDoor,false);
