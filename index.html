@@ -1551,7 +1551,7 @@ function terrainH(x,z){
       if(i<m-1){
         const a=i*4,b=a+4;
         idx.push(a,b,b+2, a,b+2,a+2,          // 外侧坡面（收分）
-                 a+1,b+1,b+3, a+1,b+3,b+1,    // 内侧坡面
+                 a+1,b+1,b+3, a+1,b+3,a+3,    // 内侧坡面
                  a+2,b+2,b+3, a+2,b+3,a+3);   // 顶部走道面
       }
     }
