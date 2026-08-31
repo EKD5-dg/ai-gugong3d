@@ -243,7 +243,7 @@
   setTimeout(function(){
     if(!window.__APP_READY__){
       var m=document.getElementById('ld-msg');
-      if(m) m.textContent='资源加载超时：Three.js 需联网加载（registry.npmmirror.com），请检查网络后刷新';
+      if(m) m.textContent='资源加载超时：本地 vendor 加载失败，请确认 vendor 目录完整后刷新（本项目无需联网）';
     }
   },12000);
 </script>
@@ -517,14 +517,22 @@ const texEave=canvasTex(512,64,(g,w,h)=>{
   }
   g.fillStyle='rgba(201,162,74,.55)'; g.fillRect(0,h-6,w,6);
 });
-// "正大光明"匾
-const texPlaque=canvasTex(512,128,(g,w,h)=>{
+// 匾额：太和殿"建极绥猷" / 乾清宫"正大光明"（分匾，避免宣传口径混淆）
+const texPlaqueJianJi=canvasTex(512,128,(g,w,h)=>{
+  g.fillStyle='#38151c'; g.fillRect(0,0,w,h);
+  g.strokeStyle='#e8c06a'; g.lineWidth=6; g.strokeRect(8,8,w-16,h-16);
+  g.fillStyle='#f2d488'; g.font='bold 78px KaiTi,"楷体",STKaiti,serif';
+  g.textAlign='center'; g.textBaseline='middle';
+  g.fillText('建 极 绥 猷',w/2,h/2+6);
+});
+const texPlaqueZhengDa=canvasTex(512,128,(g,w,h)=>{
   g.fillStyle='#38151c'; g.fillRect(0,0,w,h);
   g.strokeStyle='#e8c06a'; g.lineWidth=6; g.strokeRect(8,8,w-16,h-16);
   g.fillStyle='#f2d488'; g.font='bold 78px KaiTi,"楷体",STKaiti,serif';
   g.textAlign='center'; g.textBaseline='middle';
   g.fillText('正 大 光 明',w/2,h/2+6);
 });
+const texPlaque=texPlaqueZhengDa;
 // 井字天花彩画（贴金团龙藻井心）
 const texCoffer=canvasTex(512,512,(g,w,h)=>{
   g.fillStyle='#0f2f38'; g.fillRect(0,0,w,h);
@@ -892,8 +900,12 @@ function interior(g,o,topY){
     const cp2=new THREE.Mesh(cg,matCouplet); cp2.position.set( 4.6,topY+3,zt+1.2); cp2.rotation.y=Math.PI; g.add(cp2);
   }
   if(plaque){
+    const pm=o.plaqueTex||(o.name&&o.name.includes('乾清')?texPlaqueZhengDa:texPlaqueJianJi)||texPlaque;
+    // 显式按殿名区分：太和殿用建极绥猷，乾清宫用正大光明
+    const plaqueMap={ '太和殿':texPlaqueJianJi, '乾清宫':texPlaqueZhengDa };
+    const chosen=o.plaqueTex||plaqueMap[o.name]||texPlaque;
     const pq=new THREE.Mesh(new THREE.PlaneGeometry(6.4,1.7),
-      new THREE.MeshBasicMaterial({map:texPlaque,toneMapped:false}));
+      new THREE.MeshBasicMaterial({map:chosen,toneMapped:false}));
     pq.position.set(0,topY+bodyH-2.4,d/2-1.45); pq.rotation.y=Math.PI; g.add(pq);
   }
   const pl=new THREE.PointLight(0xffd2a0,30,140,1.1);
@@ -903,11 +915,14 @@ function interior(g,o,topY){
     sp.position.set(0,topY+bodyH-4.5,d/2-6.5); g.add(sp);
   }
 }
-// 宫殿生成器
+// 宫殿生成器（自动注册碰撞：殿身+墙内区域，避免第一人称穿墙）
 function palace(o){
   const {w,d,bodyH=10,tiers=1,double=false,pyr=false,roofH=8,x=0,y=0,z=0}=o;
   const g=new THREE.Group(); g.position.set(x,y,z);
   const bm=o.bm||matWall, rm=o.rm||matGold;
+  // 第一人称碰撞：有世界坐标的殿宇（x/z 非 0 的独立殿 / 后宫）
+  // 需在末尾 return 前按实际 y/z 注册；此处先记参数，return 前统一 addCollider
+  const _palaceCollider={w,d,x,z,y};
   // 须弥座台基：四面斜收
   for(let i=0;i<tiers;i++){
     const tw=w+8+(tiers-1-i)*9, td=d+8+(tiers-1-i)*9;
@@ -974,6 +989,8 @@ function palace(o){
     box(g,.8,.9,.9,  rl/2+.6,rt+roofH+2.4,0, matGoldDark,false);
     box(g,.8,.9,.9, -rl/2-.6,rt+roofH+2.4,0, matGoldDark,false);
   }
+  // 殿身碰撞：按殿身外轮廓注册（避免 FPS 穿墙；小尺寸附属亭可忽略但不影响）
+  if(w>=10&&d>=10) addCollider(_palaceCollider.x,_palaceCollider.z,_palaceCollider.w/2+1.2,_palaceCollider.d/2+1.2);
   return g;
 }
 // 城门（城台斜收，顶面墁石 + 压顶石框）
@@ -1026,6 +1043,7 @@ function cornerTower(x,z){
   box(g,4,3,4, 0,17.9,0, matWall);
   const f3=new THREE.Mesh(pyramidGeo(7.2,7.2,4.6),matGold); f3.position.y=19.4; g.add(f3); edged(f3);
   const fin=new THREE.Mesh(new THREE.SphereGeometry(1.1,12,10),matGoldDark); fin.position.y=24.6; g.add(fin);
+  addCollider(x,z,7,7);
   city.add(g); return g;
 }
 // 金水桥
@@ -1126,7 +1144,7 @@ function tree(x,z,s=1,kind=1){
   }
   city.add(g);
 }
-// 院墙（宫各成院，月门拱圈）
+// 院墙（宫各成院，月门拱圈；四面院墙均注册碰撞）
 function compound(x,z,w,d){
   const g=new THREE.Group(); g.position.set(x,0,z);
   const W=w+20, D=d+18, h=2.4, t=1, bm=brickMat(3,1.2);
@@ -1136,9 +1154,13 @@ function compound(x,z,w,d){
   const seg=(W-6)/2;
   box(g,seg,h,t, -(3+seg/2),h/2,-D/2, bm,false);
   box(g,seg,h,t,  (3+seg/2),h/2,-D/2, bm,false);
-  const arch=new THREE.Mesh(new THREE.TorusGeometry(2.6,.34,8,22,Math.PI),matMarble); // 月门石拱
+  const arch=new THREE.Mesh(new THREE.TorusGeometry(2.6,.34,8,22,Math.PI),matMarble);
   arch.position.set(0,1.35,-D/2); g.add(arch);
   city.add(g);
+  addCollider(x, z+D/2, W/2+.8, .9);
+  addCollider(x, z-D/2+ .1, W/2+.8, .9);
+  addCollider(x-W/2, z, .9, D/2+.8);
+  addCollider(x+W/2, z, .9, D/2+.8);
 }
 // 日晷
 function sundial(x,y,z){
@@ -1283,7 +1305,7 @@ const matPlaza2  =std({map:rep(texPlaza,7,9),roughness:.9,color:0xd8e4f4});
   yulu.position.set(0,4.25,-138.4); yulu.rotation.x=.615; yulu.castShadow=true; t.add(yulu);
   balustrade(t,123.2,235.2,9); balustrade(t,135.2,247.2,6);
   city.add(t);
-  const td=palace({w:64,d:34,bodyH:12,tiers:0,double:true,roofH:10.5,y:9,z:-115,bays:11,
+  const td=palace({name:'太和殿',w:64,d:34,bodyH:12,tiers:0,double:true,roofH:10.5,y:9,z:-115,bays:11,
     interior:true,throne:true,plaque:true,doorW:10,doorH:7.6,dougong:true,bm:matWallBig});
   td.userData.poi=3; td.userData.world='gugong'; city.add(td);
   const zh=palace({w:28,d:28,bodyH:9,tiers:0,pyr:true,roofH:11,y:9,z:-45,dougong:true}); zh.userData.poi=4; zh.userData.world='gugong'; city.add(zh);
@@ -1307,7 +1329,7 @@ const matPlaza2  =std({map:rep(texPlaza,7,9),roughness:.9,color:0xd8e4f4});
   stairs(t,26,6,-91); stairs(t,18,6,91);
   balustrade(t,79.2,179.2,6);
   city.add(t);
-  const qg=palace({w:46,d:24,bodyH:10,tiers:0,roofH:8.5,y:6,z:165,bays:9,bm:matWallWarm,rm:matGoldAmber,
+  const qg=palace({name:'乾清宫',w:46,d:24,bodyH:10,tiers:0,roofH:8.5,y:6,z:165,bays:9,bm:matWallWarm,rm:matGoldAmber,
     interior:true,throne:true,plaque:true,doorW:7.5,doorH:6.2,dougong:true});
   qg.userData.poi=7; qg.userData.world='gugong'; city.add(qg);
   const jt=palace({w:24,d:24,bodyH:8,tiers:0,pyr:true,roofH:10,y:6,z:215,dougong:true,bm:matWallWarm,rm:matGoldAmber}); jt.userData.poi=8; jt.userData.world='gugong'; city.add(jt);
@@ -1702,7 +1724,7 @@ const POIS_G=[
  {name:'太和门',en:'GATE OF SUPREME HARMONY',year:'明永乐十八年 · 1420',pos:[0,32,-300],view:{p:[0,24,-368],t:[0,20,-300]},
   desc:'外朝正门，明代"御门听政"之所。门前广场开阔数万平，白石栏板如雪，曾是明代常朝与重大典礼的仪仗之所。'},
  {name:'太和殿',en:'HALL OF SUPREME HARMONY',year:'1420 始建 · 1695 现存',pos:[0,52,-115],view:{p:[0,40,-220],t:[0,34,-115]},
-  desc:'俗称金銮殿，现存规模最大的木结构大殿。重檐庑殿顶、檐角十瑞兽。殿内金砖墁地、蟠龙藻井之下设髹金雕龙宝座，上悬"正大光明"匾——点击下方按钮可步入殿内。',inner:{p:[0,12.8,-124.5],t:[0,9.5,-103.5]}},
+  desc:'俗称金銮殿，现存规模最大的木结构大殿。重檐庑殿顶、檐角列脊兽（艺术化示意，模型以鸱吻示意；文献中"十瑞兽"为神话计数）。殿内金砖墁地、蟠龙藻井之下设髹金雕龙宝座，上悬"建极绥猷"匾（"正大光明"在乾清宫）——点击下方按钮可步入殿内。',inner:{p:[0,12.8,-124.5],t:[0,9.5,-103.5]}},
  {name:'中和殿',en:'HALL OF CENTRAL HARMONY',year:'明永乐十八年 · 1420',pos:[0,44,-45],view:{p:[0,54,-100],t:[0,28,-45]},
   desc:'三大殿之一，平面呈正方形，单檐四角攒尖顶，上置鎏金宝顶。皇帝赴太和殿大典前在此小憩、演习礼仪。'},
  {name:'保和殿',en:'HALL OF PRESERVING HARMONY',year:'明永乐十八年 · 1420',pos:[0,44,25],view:{p:[0,38,-44],t:[0,30,25]},
@@ -1720,17 +1742,17 @@ const POIS_G=[
  {name:'神武门',en:'GATE OF DIVINE PROWESS',year:'明永乐十八年 · 1420',pos:[0,38,480],view:{p:[0,42,585],t:[0,24,480]},
   desc:'紫禁城北门，旧设钟鼓晨昏报时。1925 年故宫博物院成立时于门上悬挂"故宫博物院"匾额，今为观众参观出口，门外即是景山。'},
  {name:'角楼',en:'CORNER TOWER',year:'明永乐十八年 · 1420',pos:[376,32,-480],view:{p:[498,48,-596],t:[376,16,-480]},
-  desc:'城墙四隅各有一座角楼，三重檐、七十二条脊，"九梁十八柱七十二条脊"的精巧木构，轮廓如亭如阁，是紫禁城最上镜的标志之一。'},
+  desc:'城墙四隅各有一座角楼，三重檐、民间称"九梁十八柱七十二条脊"的精巧木构（不同计数口径有出入，模型为艺术化示意），轮廓如亭如阁，是紫禁城最上镜的标志之一。'},
  {name:'檐角斗拱',en:'DOUGONG CLOSE-UP',year:'重檐庑殿 · 檐角',pos:[31,38,-130],view:{p:[46,34,-102],t:[31,34,-127]},
-  desc:'太和殿上层檐角特写：垂脊列脊兽，双层斗拱出跳承托檐口，飞檐翘角指天。琉璃瓦垄沿举折曲线铺展，檐下彩画枋层层出挑。'},
+  desc:'太和殿上层檐角特写：垂脊列脊兽（模型以鸱吻示意，艺术化数字示意非测绘复原），双层斗拱出跳承托檐口，飞檐翘角指天。琉璃瓦垄沿举折曲线铺展，檐下彩画枋层层出挑。'},
  {name:'陈设 · 铜炉',en:'BRONZE CENSERS',year:'鎏金陈设 · 台基之上',pos:[30,13,-143],view:{p:[16,13,-156],t:[30,10,-143]},
   desc:'台基南沿陈设一组：三足双耳鎏金香炉、昂首铜龟与铜鹤（大典焚香之用）、防火鎏金铜缸。日晷居东南、嘉量居西南，皆为国之量器。'},
  {name:'东六宫院落',en:'EASTERN PALACES',year:'明永乐 · 内廷东六宫',pos:[210,12,190],view:{p:[166,18,138],t:[210,9,190]},
   desc:'嫔妃居所，一宫一院、围合而居。朱红院墙、月门石拱，内设正殿配殿。与西六宫对称分布于后三宫两翼，合称"东西六宫"。'},
  {name:'文华殿',en:'HALL OF LITERARY GLORY',year:'明永乐 · 外朝东路',pos:[245,14,-235],view:{p:[208,14,-208],t:[245,10,-235]},
-  desc:'外朝东路殿宇，明代为太子东宫，清代经筵讲学之所。北侧文渊阁为皇家藏书楼，清代《四库全书》曾藏于此。'},
+  desc:'外朝东路殿宇，明代多作太子讲学/经筵之所，清代经筵讲学之所（太子居所屡有变动，非固定东宫）。北侧文渊阁为皇家藏书楼，清代《四库全书》曾藏于此。'},
  {name:'武英殿',en:'HALL OF MARTIAL VALOR',year:'明永乐 · 外朝西路',pos:[-245,14,-235],view:{p:[-208,14,-208],t:[-245,10,-235]},
-  desc:'外朝西路殿宇。清代设武英殿修书处，刊刻书籍称"殿版"，开清代官刻之先河。据载1644年李自成曾在此举行即位仪式。'},
+  desc:'外朝西路殿宇，明代曾为皇帝便殿/斋居之所，清代改为修书处刊刻"殿版"。据载1644年李自成曾在此举行即位仪式。'},
  {name:'景山万春亭',en:'WANCHUN PAVILION',year:'清乾隆十五年 · 1750',pos:[0,54,660],view:{p:[2,68,586],t:[0,46,660]},
   desc:'景山之巅，北京中轴线制高点。登亭南望，紫禁城金顶琉璃一览无余——此刻脚下，正是你眼前的整座数字孪生城。'},
 ];
@@ -1738,14 +1760,14 @@ const P0=GW.path?GW.path[2]:new THREE.Vector3();
 const POIS_W=[
  {name:'关城',en:'FORTRESS GATE',year:'明弘治十八年 · 1505',pos:[GW.guanAddr?.x||P0.x,(GW.guanAddr?.y||0)+34,GW.guanAddr?.z||0],
   view:{p:[GW.guanAddr?.x-90||-90,(GW.guanAddr?.y||0)+55,GW.guanAddr?.z-150||-150],t:[GW.guanAddr?.x||0,(GW.guanAddr?.y||0)+12,GW.guanAddr?.z||0]},
-  desc:'长城东端关隘，瓮城环护、城楼高耸，扼守燕山隘口。古人云"居庸之险不在关而在八达岭"，此即八达岭之门户。'},
+  desc:'长城东端关隘（模型以单墙段示意瓮城两翼，非完整闭环），城楼扼守隘口。古人云"居庸之险不在关而在八达岭"，此即八达岭之门户。艺术化数字示意。'},
  {name:'敌楼 · 北四楼',en:'WATCH TOWER',year:'明隆庆三年 · 1569',pos:GW.towers[0]?(GW.towers[0].pos.toArray()):[0,40,0],
   view:{p:[(GW.towers[0]?.pos.x||0)+70,(GW.towers[0]?.pos.y||40)+30,(GW.towers[0]?.pos.z||0)+70],t:GW.towers[0]?.pos.toArray()||[0,20,0]},
   desc:'空心敌楼，上下两层，可驻兵数十、储存粮械。隆庆至万历年间大量增建，为长城防御体系的中坚。'},
  {name:'好汉坡',en:'HERO SLOPE',year:'"不到长城非好汉"',pos:(()=>{const p=GW.path[GW.haohan||80]||new THREE.Vector3();return [p.x,p.y+16,p.z];})(),
   view:(()=>{const p=GW.path[GW.haohan||80]||new THREE.Vector3();
     return {p:[p.x+40,p.y+50,p.z+90],t:[p.x,p.y+8,p.z]};})(),
-  desc:'全程坡度最陡的一段，最陡处接近 45°，需扶墙攀行。后世以"不到长城非好汉"喻其雄峻，登顶回望，城墙如巨龙盘于群山之脊。'},
+  desc:'全程较陡的一段，据测最陡处约 45°，需扶墙攀行。后世以"不到长城非好汉"喻其雄峻，登顶回望，城墙如巨龙盘于群山之脊。'},
  {name:'北八楼',en:'TOWER NO.8',year:'明隆庆三年 · 1569',pos:GW.towers[1]?(GW.towers[1].pos.toArray()):[0,40,0],
   view:{p:[(GW.towers[1]?.pos.x||0)-70,(GW.towers[1]?.pos.y||40)+34,(GW.towers[1]?.pos.z||0)+80],t:GW.towers[1]?.pos.toArray()||[0,20,0]},
   desc:'八达岭海拔最高的敌楼，俗称"好汉坡顶"。楼橹森然、雉堞连云，是俯瞰长城全势的最佳位置。'},
@@ -1787,8 +1809,8 @@ const POI_EN={
   "The empress's residence under the Ming; under the Qing a shamanist ritual hall and the imperial wedding chamber — Kangxi, Tongzhi and Guangxu all married here.",
   "The imperial garden closing the central axis: ancient cypresses, the Qian'an Hall of the Dark Warrior, and the Hill of Accumulated Elegance with its viewing pavilion.",
   "The north gate, its drums and bells marking dawn and dusk. The Palace Museum plaque was hung here in 1925; Jingshan Hill rises just outside.",
-  "Four corner towers with 'nine beams, eighteen columns and seventy-two ridges' — the most photographed silhouette of the palace.",
-  "A close-up of the upper eave: ten immortal-and-beast figures on the ridge, double-tier dougong brackets carrying the eave, and glazed tiles laid along the concave roof curve.",
+  "Four corner towers, popularly 'nine beams, eighteen columns and seventy-two ridges' (folk count, varies by method) — the most photographed silhouette (artistic interpretation).",
+  "A close-up of the upper eave: ridge beasts along the hip ridge (artistic; model shows chiwen), double-tier dougong brackets carrying the eave, and glazed tiles laid along the concave roof curve.",
   "Terrace furnishings: a three-legged gilt censer, bronze turtle and crane incense burners for ceremony smoke, and gilded fire-fighting vats. The sundial stands east, the grain measure west.",
   "Consorts' residences — one walled courtyard per palace with its moon-gate, mirrored by the Six Western Palaces to form the 'three palaces, six courts'.",
   "Eastern Outer Court hall: the crown prince's residence in the Ming, lecture hall of the classicist academics in the Qing, famed for its crab-apple blossoms.",
@@ -1798,7 +1820,7 @@ const POI_EN={
  wall:[
   "The gate fortress of Badaling, first built in 1505: outer gate, walled barbican and gate tower sealing the pass — 'the peril lies not at Juyongguan but at Badaling'.",
   "A two-storey hollow watchtower, garrisoned by dozens of men with grain and arms — the backbone of the Ming border defence rebuilt under Qi Jiguang.",
-  "The steepest climb of the line, nearly 45 degrees. 'He who has never been to the Great Wall is not a true man.'",
+  "One of the steeper climbs, measured approx. 45 degrees at the steepest. 'He who has never been to the Great Wall is not a true man.'",
   "The highest watchtower of the Badaling stretch — the best vantage over the wall winding along the ridges.",
   "Smoke by day, fire by night: beacon relays carried military news a thousand li within a single day and night.",
   "Legend holds that Beijing could be glimpsed from this highest eastern tower on clear days — hence 'Watching-the-Capital Tower'.",
@@ -1887,9 +1909,10 @@ document.getElementById('btn-fs').addEventListener('click',()=>{
   if(document.fullscreenElement) document.exitFullscreen();
   else document.documentElement.requestFullscreen();
 });
-/* ── 卡片内"环绕此建筑" ── */
+/* ── 卡片内"环绕此建筑"（锚定当前 POI） ── */
 const orbitBtn=document.getElementById('c-orbit');
 orbitBtn.addEventListener('click',()=>{
+  if(activePOI>=0) controls.target.copy(WORLDS[activeWorld].pois[activePOI].v3);
   controls.autoRotate=true; state.rotate=true;
   document.querySelector('[data-toggle="rotate"]').classList.add('on');
 });
@@ -2001,13 +2024,24 @@ let fpsSaved=null, fpsDrag=null;
 function groundAt(x,z){
   if(activeWorld==='wall'){
     let g=GW.gridH(x,z);
-    if(Math.abs(z-ridgeZ(x))<5.5) g=Math.max(g,GW.gridH(x,ridgeZ(x))+8);
+    const rz=ridgeZ(x);
+    // 马道面高 ≈ 山脊地形 + 墙高 8 左右（随里程微差）；取马道内不偏向坡地的高度
+    if(Math.abs(z-rz)<5.5) g=Math.max(g,GW.gridH(x,rz)+8.1);
     return g;
   }
-  // 三大殿台基（顶层 z -162..73 / x ±61.6）
-  if(x>-60&&x<60&&z>-161&&z<72) return 9;
-  // 后三宫台基（顶层 z 126..304 / x ±40.6）
-  if(x>-40&&x<40&&z>127&&z<303) return 6;
+  // 臺基外扩缓冲做斜面过渡：顶面内直接 9/6，边缘 2m 带做线性斜坡，避免悬空跳变
+  const ramp=(x,z,x0,x1,z0,z1,topH)=>{
+    const inside=(x>=x0&&x<=x1&&z>=z0&&z<=z1);
+    if(inside) return topH;
+    const dx=Math.max(x0-x,0, x-x1), dz=Math.max(z0-z,0, z-z1);
+    const d=Math.hypot(dx,dz);
+    if(d>2) return .1;
+    return .1+(topH-.1)*(1-d/2);
+  };
+  const g1=ramp(x,z,-60,60,-161,72,9);
+  if(g1>.11) return g1;
+  const g2=ramp(x,z,-40,40,127,303,6);
+  if(g2>.11) return g2;
   return .1;
 }
 function enterFPS(){
@@ -2022,10 +2056,18 @@ function enterFPS(){
     fps.x=p.x; fps.z=p.z;
     fps.yaw=Math.PI/2;
   }else{
-    fps.x=0; fps.z=-470;   // 午门内广场面向太和门
-    fps.yaw=Math.PI;       // 面朝 +z（北→太和门）
+    fps.x=0; fps.z=-445;   // 御路南端广场（午门城台外，避免入场即穿墙）
+    fps.yaw=Math.PI;
   }
   fps.pitch=0;
+  // 入场即做一次碰撞推挤，避免卡墙瞬移
+  for(const cd of COLLIDERS){
+    const dx=fps.x-cd.x, dz=fps.z-cd.z, ex=cd.hw+.6, ez=cd.hd+.6;
+    if(Math.abs(dx)<ex&&Math.abs(dz)<ez){
+      if(ex-Math.abs(dx)<ez-Math.abs(dz)) fps.x=cd.x+Math.sign(dx||1)*ex;
+      else fps.z=cd.z+Math.sign(dz||1)*ez;
+    }
+  }
   fps.y=groundAt(fps.x,fps.z)+fps.eye;
   camera.position.set(fps.x,fps.y,fps.z);
   camera.rotation.set(fps.pitch,fps.yaw,0,'YXZ');
@@ -2146,6 +2188,7 @@ function setXray(on){
   edgeMat.opacity=on?.95:.42; edgeMatG.opacity=on?.85:.4;
 }
 renderer.domElement.addEventListener('pointerdown',()=>{
+  if(fps.on) return;
   poiLayer.classList.remove('dim');
   if(fly){ fly=null; controls.enabled=true; }
   if(tourOn) tourSet(false);
@@ -2295,10 +2338,10 @@ function animate(){
     const lim=activeWorld==='wall'?[1150,800]:[400,540];
     fps.x=THREE.MathUtils.clamp(fps.x,-lim[0],lim[0]);
     fps.z=THREE.MathUtils.clamp(fps.z,-lim[1],activeWorld==='wall'?lim[1]:470);
-    // 长城：限位在马道宽度内（不掉落两侧）
+    // 长城：限位在马道内宽度（3.2 安全区，避免卡进女墙）
     if(activeWorld==='wall'){
       const rz=ridgeZ(fps.x);
-      if(Math.abs(fps.z-rz)>3.8) fps.z=rz+Math.sign(fps.z-rz)*3.8;
+      if(Math.abs(fps.z-rz)>3.2) fps.z=rz+Math.sign(fps.z-rz)*3.2;
     }
     const gy=groundAt(fps.x,fps.z)+fps.eye;
     fps.y+=(gy-fps.y)*Math.min(1,dt*10);
