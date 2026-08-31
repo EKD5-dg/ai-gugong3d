@@ -900,8 +900,7 @@ function interior(g,o,topY){
     const cp2=new THREE.Mesh(cg,matCouplet); cp2.position.set( 4.6,topY+3,zt+1.2); cp2.rotation.y=Math.PI; g.add(cp2);
   }
   if(plaque){
-    const pm=o.plaqueTex||(o.name&&o.name.includes('乾清')?texPlaqueZhengDa:texPlaqueJianJi)||texPlaque;
-    // 显式按殿名区分：太和殿用建极绥猷，乾清宫用正大光明
+    // 按殿名区分：太和殿用建极绥猷，乾清宫用正大光明
     const plaqueMap={ '太和殿':texPlaqueJianJi, '乾清宫':texPlaqueZhengDa };
     const chosen=o.plaqueTex||plaqueMap[o.name]||texPlaque;
     const pq=new THREE.Mesh(new THREE.PlaneGeometry(6.4,1.7),
@@ -920,9 +919,6 @@ function palace(o){
   const {w,d,bodyH=10,tiers=1,double=false,pyr=false,roofH=8,x=0,y=0,z=0}=o;
   const g=new THREE.Group(); g.position.set(x,y,z);
   const bm=o.bm||matWall, rm=o.rm||matGold;
-  // 第一人称碰撞：有世界坐标的殿宇（x/z 非 0 的独立殿 / 后宫）
-  // 需在末尾 return 前按实际 y/z 注册；此处先记参数，return 前统一 addCollider
-  const _palaceCollider={w,d,x,z,y};
   // 须弥座台基：四面斜收
   for(let i=0;i<tiers;i++){
     const tw=w+8+(tiers-1-i)*9, td=d+8+(tiers-1-i)*9;
@@ -989,8 +985,8 @@ function palace(o){
     box(g,.8,.9,.9,  rl/2+.6,rt+roofH+2.4,0, matGoldDark,false);
     box(g,.8,.9,.9, -rl/2-.6,rt+roofH+2.4,0, matGoldDark,false);
   }
-  // 殿身碰撞：按殿身外轮廓注册（避免 FPS 穿墙；小尺寸附属亭可忽略但不影响）
-  if(w>=10&&d>=10) addCollider(_palaceCollider.x,_palaceCollider.z,_palaceCollider.w/2+1.2,_palaceCollider.d/2+1.2);
+  // 殿身碰撞：按殿身外轮廓注册；组内局部坐标的殿宇（城楼/山亭）传 collide:false 关闭
+  if(o.collide!==false&&w>=10&&d>=10) addCollider(x,z,w/2+1.2,d/2+1.2);
   return g;
 }
 // 城门（城台斜收，顶面墁石 + 压顶石框）
@@ -999,7 +995,8 @@ function gate(o){
   const g=new THREE.Group(); g.position.set(x,0,z); g.rotation.y=rot;
   const bf=sh(new THREE.Mesh(hipFrustumGeo(w+1.8,d+1.8,w,d,h),bm));
   g.add(bf); edged(bf);
-  addCollider(x,z,w/2+1,d/2+1);  // 城台碰撞（未旋转近似）
+  const alongX=Math.abs(Math.cos(rot))>.5;
+  addCollider(x,z, (alongX? w/2+2 : d/2+1), (alongX? d/2+1 : w/2+2));  // 城台碰撞（rot=±π/2 交换长短轴，长轴+2 与两端墙碰撞衔接）
   // 城台顶面墁石
   const pave=new THREE.Mesh(new THREE.PlaneGeometry(w-1.2,d-1.2),
     matWith('gp'+w+'x'+d,()=>std({map:rep(texPave,Math.max(2,Math.round(w/5)),Math.max(2,Math.round(d/5))),roughness:.92})));
@@ -1014,7 +1011,7 @@ function gate(o){
     box(g,w*.12,h*.4,2,  w*.3,h*.2, s*(d/2-.4), matDoor,false);
     box(g,w*.12,h*.4,2, -w*.3,h*.2, s*(d/2-.4), matDoor,false);
   });
-  const t=palace({w:w*.62,d:d*.85,bodyH:h*.58,tiers:0,roofH:towerH,bm});
+  const t=palace({w:w*.62,d:d*.85,bodyH:h*.58,tiers:0,roofH:towerH,bm,collide:false});  // 城楼已被城台碰撞覆盖
   t.position.y=h; g.add(t);
   return g;
 }
@@ -1030,6 +1027,8 @@ function wall(x1,z1,x2,z2,h=8){
     box(g,len+1.6,.9,4.6, xc,h+.45,z1, matWallDark);
   }
   f.castShadow=true; f.receiveShadow=true; g.add(f); edged(f);
+  if(x1===x2){ const len=Math.abs(z2-z1); addCollider(x1,(z1+z2)/2,2.4,len/2); }
+  else{ const len=Math.abs(x2-x1); addCollider((x1+x2)/2,z1,len/2,2.4); }
   city.add(g); return g;
 }
 // 角楼
@@ -1157,8 +1156,9 @@ function compound(x,z,w,d){
   const arch=new THREE.Mesh(new THREE.TorusGeometry(2.6,.34,8,22,Math.PI),matMarble);
   arch.position.set(0,1.35,-D/2); g.add(arch);
   city.add(g);
+  addCollider(x-(3+seg/2), z-D/2, seg/2+.5, .9);   // 南墙两段，月门留真实缺口
+  addCollider(x+(3+seg/2), z-D/2, seg/2+.5, .9);
   addCollider(x, z+D/2, W/2+.8, .9);
-  addCollider(x, z-D/2+ .1, W/2+.8, .9);
   addCollider(x-W/2, z, .9, D/2+.8);
   addCollider(x+W/2, z, .9, D/2+.8);
 }
@@ -1280,9 +1280,9 @@ const matPlaza2  =std({map:rep(texPlaza,7,9),roughness:.9,color:0xd8e4f4});
   box(g,11,8,2.6, -30,4,-21.2, matDoor,false);
   box(g,11,8,2.6,  30,4,-21.2, matDoor,false);
   box(g,16,11,3, 0,5.5,21.4, matDoor,false);
-  const t=palace({w:62,d:20,bodyH:8,tiers:0,roofH:8.5,bm:matWallBig,dougong:true}); t.position.y=16; g.add(t);
-  const p1=palace({w:18,d:13,bodyH:6,tiers:0,roofH:5}); p1.position.set(-74,14,-88); g.add(p1);
-  const p2=palace({w:18,d:13,bodyH:6,tiers:0,roofH:5}); p2.position.set( 74,14,-88); g.add(p2);
+  const t=palace({w:62,d:20,bodyH:8,tiers:0,roofH:8.5,bm:matWallBig,dougong:true,collide:false}); t.position.y=16; g.add(t);
+  const p1=palace({w:18,d:13,bodyH:6,tiers:0,roofH:5,collide:false}); p1.position.set(-74,14,-88); g.add(p1);
+  const p2=palace({w:18,d:13,bodyH:6,tiers:0,roofH:5,collide:false}); p2.position.set( 74,14,-88); g.add(p2);
   g.userData.poi=0; g.userData.world='gugong'; city.add(g);
 }
 // —— 金水桥 ×5
@@ -1381,11 +1381,11 @@ huabiao(-58,0,-552); huabiao(58,0,-552);
     const m=new THREE.Mesh(new THREE.SphereGeometry(r,24,16,0,Math.PI*2,0,Math.PI/2),matHill);
     m.scale.y=.58; m.position.x=hx; hill.add(m);
   });
-  hill.add(palace({w:16,d:16,bodyH:6,tiers:0,pyr:true,roofH:8,x:0,y:41,z:0}));    // 万春亭
-  hill.add(palace({w:11,d:11,bodyH:5,tiers:0,pyr:true,roofH:6,x:-30,y:33,z:-4})); // 周赏亭
-  hill.add(palace({w:11,d:11,bodyH:5,tiers:0,pyr:true,roofH:6,x:30,y:33,z:-4}));  // 辑芳亭
-  hill.add(palace({w:10,d:10,bodyH:4,tiers:0,pyr:true,roofH:5,x:-58,y:28,z:-9})); // 观妙亭
-  hill.add(palace({w:10,d:10,bodyH:4,tiers:0,pyr:true,roofH:5,x:58,y:28,z:-9}));  // 富览亭
+  hill.add(palace({w:16,d:16,bodyH:6,tiers:0,pyr:true,roofH:8,x:0,y:41,z:0,collide:false}));    // 万春亭
+  hill.add(palace({w:11,d:11,bodyH:5,tiers:0,pyr:true,roofH:6,x:-30,y:33,z:-4,collide:false})); // 周赏亭
+  hill.add(palace({w:11,d:11,bodyH:5,tiers:0,pyr:true,roofH:6,x:30,y:33,z:-4,collide:false}));  // 辑芳亭
+  hill.add(palace({w:10,d:10,bodyH:4,tiers:0,pyr:true,roofH:5,x:-58,y:28,z:-9,collide:false})); // 观妙亭
+  hill.add(palace({w:10,d:10,bodyH:4,tiers:0,pyr:true,roofH:5,x:58,y:28,z:-9,collide:false}));  // 富览亭
   hill.userData={poi:18,world:'gugong'};
   city.add(hill);
 }
@@ -1551,7 +1551,7 @@ function terrainH(x,z){
       if(i<m-1){
         const a=i*4,b=a+4;
         idx.push(a,b,b+2, a,b+2,a+2,          // 外侧坡面（收分）
-                 a+1,b+1,b+3, a+1,b+3,a+3,    // 内侧坡面
+                 a+1,b+3,b+1, a+1,a+3,b+3,    // 内侧坡面（绕序朝外，与外坡/顶面一致）
                  a+2,b+2,b+3, a+2,b+3,a+3);   // 顶部走道面
       }
     }
@@ -1800,7 +1800,7 @@ const POI_EN={
   "The main gate, completed in 1420. Five tower pavilions crown the U-shaped platform; imperial edicts were proclaimed and victorious armies presented here.",
   "Five marble bridges cross the Inner Golden Water river, graded by rank for the emperor, princes and officials — an allegory of the five virtues. Every baluster post is modelled.",
   "The ceremonial gate to the Outer Court, where Ming emperors held 'court at the gate' audiences on the vast square before it.",
-  "Popularly the Golden Throne Hall — the largest surviving timber hall in China. Enthronements, royal weddings and field-marshal appointments were held here. First built 1420, rebuilt 1695. Step inside for the gilded throne under the caisson ceiling.",
+  "Popularly the Golden Throne Hall — the largest surviving timber hall in China. Enthronements, royal weddings and field-marshal appointments were held here. First built 1420, rebuilt 1695. Step inside for the gilded throne under the caisson ceiling and the 'Jianji Suiyou' plaque ('Upright and Bright' hangs in the Palace of Heavenly Purity).",
   "A square hall with a pyramidal gilded roof, where the emperor rested and rehearsed rites before the grand ceremonies in the Hall of Supreme Harmony.",
   "Hosted the final imperial examinations from 1789, and New Year banquets for frontier lords. Double-eaved hip roof on the shared marble terrace.",
   "Main gate of the Inner Court. Emperor Kangxi held 'court at the gate' sessions here; the council desks stood beside it.",
@@ -1813,8 +1813,8 @@ const POI_EN={
   "A close-up of the upper eave: ridge beasts along the hip ridge (artistic; model shows chiwen), double-tier dougong brackets carrying the eave, and glazed tiles laid along the concave roof curve.",
   "Terrace furnishings: a three-legged gilt censer, bronze turtle and crane incense burners for ceremony smoke, and gilded fire-fighting vats. The sundial stands east, the grain measure west.",
   "Consorts' residences — one walled courtyard per palace with its moon-gate, mirrored by the Six Western Palaces to form the 'three palaces, six courts'.",
-  "Eastern Outer Court hall: the crown prince's residence in the Ming, lecture hall of the classicist academics in the Qing, famed for its crab-apple blossoms.",
-  "Western Outer Court hall, home of the Imperial Printing Office whose 'Wuying editions' are famed; Li Zicheng's brief enthronement rite was held here in 1644.",
+  "Eastern Outer Court hall: used chiefly for the heir apparent's studies and classicist lectures under the Ming (the prince's household moved often), and for the classicist academy under the Qing; famed for its crab-apple blossoms.",
+  "Western Outer Court hall: an imperial side hall for fasting and audiences under the Ming; under the Qing the Imperial Printing Office, whose 'Wuying editions' are famed; Li Zicheng's brief enthronement rite was held here in 1644.",
   "Wanchun Pavilion crowns Jingshan Hill, the highest point of the central axis — from here the golden roofs of the Forbidden City spread at your feet."
  ],
  wall:[
@@ -1994,6 +1994,7 @@ async function kioskLoop(my){
 }
 function enterKiosk(){
   if(kiosk) return;
+  if(fps.on) exitFPS();
   kiosk=true; const my=++kioskSeq;
   document.body.classList.add('kiosk');
   try{ document.documentElement.requestFullscreen?.().catch(()=>{}); }catch(e){}
@@ -2025,8 +2026,12 @@ function groundAt(x,z){
   if(activeWorld==='wall'){
     let g=GW.gridH(x,z);
     const rz=ridgeZ(x);
-    // 马道面高 ≈ 山脊地形 + 墙高 8 左右（随里程微差）；取马道内不偏向坡地的高度
-    if(Math.abs(z-rz)<5.5) g=Math.max(g,GW.gridH(x,rz)+8.1);
+    // 马道面高 = 山脊地形 + wallTop(i)（与建模同源的里程起伏，眼高贴合铺装不再悬空/没入）
+    if(Math.abs(z-rz)<5.5){
+      const wi=Math.max(0,Math.min(GW.path.length-1,Math.round((x+1160)/5)));
+      const th=8.5+1.1*Math.sin(wi*.23)+.6*Math.sin(wi*.07);
+      g=Math.max(g,GW.gridH(x,rz)+th);
+    }
     return g;
   }
   // 臺基外扩缓冲做斜面过渡：顶面内直接 9/6，边缘 2m 带做线性斜坡，避免悬空跳变
@@ -2038,9 +2043,9 @@ function groundAt(x,z){
     if(d>2) return .1;
     return .1+(topH-.1)*(1-d/2);
   };
-  const g1=ramp(x,z,-60,60,-161,72,9);
+  const g1=ramp(x,z,-61.5,61.5,-162.5,72.5,9);
   if(g1>.11) return g1;
-  const g2=ramp(x,z,-40,40,127,303,6);
+  const g2=ramp(x,z,-44,44,121,309,6);
   if(g2>.11) return g2;
   return .1;
 }
@@ -2109,6 +2114,7 @@ function rebuildViewButtons(){
 }
 function setWorld(k){
   if(k===activeWorld) return;
+  if(fps.on) exitFPS();   // 步行中切世界：先退出，避免坐标残留瞬移
   tourSet(false); closeCard(); poiLayer.classList.remove('dim');
   if(dirpanel.classList.contains('show')) fillDir();
   activeWorld=k;
@@ -2396,6 +2402,7 @@ window.__gw=gw; window.__city=city;   // 调试钩子
 window.__r3={renderer,scene,camera,controls,composer};
 window.__THREE=THREE;
 window.__animate=animate; // 手动步进（rAF 被系统冻结时用于验证）
+window.__fps=fps;         // 调试钩子：第一人称状态
 window.__dbg=()=>({aw:activeWorld,wk:Object.keys(WORLDS),has:!!WORLDS[activeWorld],wpois:WORLDS[activeWorld]?WORLDS[activeWorld].pois.length:-1});
 window.__finishGrow=()=>{ growing=false; city.scale.y=1; clock.getDelta(); };
 
