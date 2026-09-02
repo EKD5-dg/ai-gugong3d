@@ -3,7 +3,7 @@
 以 **IT 科技 / 数字孪生大屏风格** 呈现的故宫（紫禁城）+ 万里长城 双世界 3D 全景。
 全部场景 **Three.js 程序化建模 + 程序化纹理**，零外部模型/图片资源，单文件运行。
 
-![tech](https://img.shields.io/badge/Three.js-r170-3fe1ff) ![tech](https://img.shields.io/badge/世界-紫禁城·长城-e8c06a) ![tech](https://img.shields.io/badge/依赖-仅CDN一个-0a1120)
+![tech](https://img.shields.io/badge/Three.js-r170-3fe1ff) ![tech](https://img.shields.io/badge/世界-紫禁城·长城-e8c06a) ![tech](https://img.shields.io/badge/依赖-本地vendor离线可用-0a1120)
 
 ## 在线访问
 
@@ -27,11 +27,11 @@ python -m http.server 8123
 # 浏览器访问 http://localhost:8123
 ```
 
-## 世界一：紫禁城（13 处标注）
+## 世界一：紫禁城（19 处标注）
 
 午门（五凤楼）→ 内金水桥×5 → 太和门 → **三大殿**（太和殿·重檐庑殿 / 中和殿·四角攒尖 / 保和殿，共享三层汉白玉台基）→ 乾清门 → **后三宫**（乾清宫 / 交泰殿 / 坤宁宫）→ 御花园·钦安殿 → 神武门，另有东华门、西华门、四座角楼、东六宫/西六宫、文华殿/武英殿、护城河、景山。
 
-**可进入内景**：点击「太和殿」或「乾清宫」标注 → 信息卡内点击「进入殿内」——金砖墁地、井字天花彩画、三重藻井、髹金雕龙宝座、"正大光明"匾、楹联、地毯、柱础，纤毫毕现。
+**可进入内景**：点击「太和殿」或「乾清宫」标注 → 信息卡内点击「进入殿内」——金砖墁地、井字天花彩画、三重藻井、髹金雕龙宝座、"建极绥猷"匾（乾清宫为"正大光明"）、楹联、地毯、柱础，纤毫毕现。
 
 ### 精细度（每一块砖都看得到）
 
@@ -49,7 +49,7 @@ python -m http.server 8123
 | 植被 | 松柏（塔形三层）/ 阔叶（双球冠）两类程序化树木 |
 | 氛围 | 夜空明月（不受雾衰减）、护城河水光呼吸、软阴影 |
 
-## 世界二：万里长城（6 处标注）
+## 世界二：万里长城（10 处标注）
 
 程序化燕山山脊地形（低多边形 + 顶点色分层）+ 沿山脊蜿蜒 2300 单位的长城：
 关城（瓮城+城楼）、敌楼（北四楼 / 北八楼 / 望京楼）、烽火台（狼烟火光脉动）、好汉坡。
@@ -61,7 +61,7 @@ python -m http.server 8123
 - 📡 垂直扫描光幕 + 地面雷达波纹（两世界尺寸自适应）
 - 🐉 中轴线发光"龙脉"光带（紫禁城）
 - 🧪 X 射线线框模式：一键切换全息线框视图
-- 🏷 13+6 处 POI 悬浮标注，点击查看沿革并自动飞行聚焦
+- 🏷 19+10 处 POI 悬浮标注，点击查看沿革并自动飞行聚焦
 - 🎬 自动巡航：紫禁城中轴线游览 / 长城沿线低空飞行（往返）
 - 📊 遥测面板：FPS / 三角面数 / Draw Calls / 相机坐标
 
@@ -88,4 +88,4 @@ python -m http.server 8123
 
 ## 技术栈
 
-Three.js r170（importmap + ES Module，npmmirror 镜像）、EffectComposer + UnrealBloomPass、ACES 色调映射、CanvasTexture 程序化纹理、InstancedMesh 批渲染、Catmull-Rom 巡航样条、手写 CSS2D 投影标注。
+Three.js r170（importmap + ES Module，本地 vendor 目录，离线可用）、EffectComposer + UnrealBloomPass、ACES 色调映射、CanvasTexture 程序化纹理、InstancedMesh 批渲染、Catmull-Rom 巡航样条、手写 CSS2D 投影标注。
