@@ -286,6 +286,7 @@ renderer.shadowMap.type = THREE.PCFShadowMap;
 const _rtSize=renderer.getDrawingBufferSize(new THREE.Vector2());
 const _msaaRT=new THREE.WebGLRenderTarget(_rtSize.x,_rtSize.y,{samples:4,type:THREE.HalfFloatType});
 document.body.appendChild(renderer.domElement);
+renderer.domElement.addEventListener('webglcontextlost',e=>{ e.preventDefault(); location.reload(); });  // GPU 上下文丢失自愈
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x04070f);
@@ -1634,7 +1635,12 @@ function terrainH(x,z){
     box(g,1.4,4.8,3.6, -9.2,4.6,0, matDoor,false);
     box(g,1.4,4.8,3.6,  9.2,4.6,0, matDoor,false);
     g.userData={poi,world:'wall'};
-    addCollider(p.x,p.z,11,11,'wall');
+    // 楼体碰撞：两翼各一盒，留出门洞走廊（沿墙方向可穿楼，门洞与视觉门位置对应）
+    const tA=P[Math.max(0,idx-2)], tB=P[Math.min(n-1,idx+2)];
+    const dvx=tB.x-tA.x, dvz=tB.z-tA.z, dl=Math.hypot(dvx,dvz)||1;
+    const tnx=dvz/dl, tnz=-dvx/dl;
+    addCollider(p.x+tnx*7,p.z+tnz*7,3.5,3.5,'wall');
+    addCollider(p.x-tnx*7,p.z-tnz*7,3.5,3.5,'wall');
     gw.add(g); GW.towers.push({name,pos:p.clone().add(new THREE.Vector3(0,22,0)),group:g});
     return g;
   }
@@ -1643,7 +1649,7 @@ function terrainH(x,z){
   {
     const p=P[2], g=new THREE.Group(); g.position.copy(p);
     const dir=new THREE.Vector3().subVectors(P[6],P[0]), yaw=Math.atan2(dir.x,dir.z);
-    g.rotation.y=yaw;
+    g.rotation.y=yaw; GW.guanYaw=yaw;   // 供 POI 标注做局部→世界换算
     box(g,46,15,28, 0,7.5,0, matGWTower);
     box(g,9,10,3.4, 0,5,-14.2, matDoor,false);
     box(g,9,10,3.4, 0,5, 14.2, matDoor,false);
@@ -1687,7 +1693,12 @@ function terrainH(x,z){
     glow.position.y=17; g.add(glow);
     const li=new THREE.PointLight(0xff8c3a,2.2,90,1.2); li.position.y=19; g.add(li);
     g.userData={poi:8,world:'wall'};
-    addCollider(p.x,p.z,10,10,'wall');
+    // 烽火台碰撞：两翼留走廊，不堵死马道
+    const bA=P[Math.max(0,idx-2)], bB=P[Math.min(n-1,idx+2)];
+    const bvx=bB.x-bA.x, bvz=bB.z-bA.z, bl=Math.hypot(bvx,bvz)||1;
+    const bnx=bvz/bl, bnz=-bvx/bl;
+    addCollider(p.x+bnx*6.75,p.z+bnz*6.75,3.25,3.25,'wall');
+    addCollider(p.x-bnx*6.75,p.z-bnz*6.75,3.25,3.25,'wall');
     GW.beacons.push({glow,li,y0:17}); GW.beaconGroups.push(g);
     gw.add(g);
   });
@@ -1751,7 +1762,7 @@ const POIS_G=[
   desc:'紫禁城北门，旧设钟鼓晨昏报时。1925 年故宫博物院成立时于门上悬挂"故宫博物院"匾额，今为观众参观出口，门外即是景山。'},
  {name:'角楼',en:'CORNER TOWER',year:'明永乐十八年 · 1420',pos:[376,32,-480],view:{p:[498,48,-596],t:[376,16,-480]},
   desc:'城墙四隅各有一座角楼，三重檐、民间称"九梁十八柱七十二条脊"的精巧木构（不同计数口径有出入，模型为艺术化示意），轮廓如亭如阁，是紫禁城最上镜的标志之一。'},
- {name:'檐角斗拱',en:'DOUGONG CLOSE-UP',year:'重檐庑殿 · 檐角',pos:[31,38,-130],view:{p:[46,34,-102],t:[31,34,-127]},
+ {name:'檐角斗拱',en:'DOUGONG CLOSE-UP',year:'重檐庑殿 · 檐角',pos:[26,31,-126],view:{p:[44,32,-100],t:[26,30,-126]},
   desc:'太和殿上层檐角特写：垂脊列脊兽（模型以鸱吻示意，艺术化数字示意非测绘复原），双层斗拱出跳承托檐口，飞檐翘角指天。琉璃瓦垄沿举折曲线铺展，檐下彩画枋层层出挑。'},
  {name:'陈设 · 铜炉',en:'BRONZE CENSERS',year:'鎏金陈设 · 台基之上',pos:[30,13,-143],view:{p:[16,13,-156],t:[30,10,-143]},
   desc:'台基南沿陈设一组：三足双耳鎏金香炉、昂首铜龟与铜鹤（大典焚香之用）、防火鎏金铜缸。日晷居东南、嘉量居西南，皆为国之量器。'},
@@ -1798,9 +1809,11 @@ const POIS_W=[
   view:(()=>{const b=GW.beaconGroups&&GW.beaconGroups[0]?GW.beaconGroups[0].position:new THREE.Vector3();
     return {p:[b.x+17,b.y+28,b.z+24],t:[b.x,b.y+18,b.z]};})(),
   desc:'火盆特写：鎏金铜盆燃狼烟，火光在夜风中明灭。一炷狼烟起，千里军情达——冷兵器时代的"光纤通信"。'},
- {name:'瓮城之内',en:'INSIDE THE BARBICAN',year:'瓮中捉鳖 · 防御设计',pos:(()=>{const g=GW.guanAddr||GW.path[2];return [g.x+22,g.y+14,g.z-6];})(),
-  view:(()=>{const g=GW.guanAddr||GW.path[2];
-    return {p:[g.x+36,g.y+10,g.z+28],t:[g.x,g.y+9,g.z]};})(),
+ {name:'瓮城之内',en:'INSIDE THE BARBICAN',year:'瓮中捉鳖 · 防御设计',
+  pos:(()=>{const g=GW.guanAddr||GW.path[2];return [g.x,g.y+20,g.z];})(),
+  view:(()=>{const g=GW.guanAddr||GW.path[2],y=GW.guanYaw||0,c=Math.cos(y),s=Math.sin(y);
+    const W2=(lx,ly,lz)=>[g.x+lx*c+lz*s, g.y+ly, g.z-lx*s+lz*c];
+    return {p:W2(14,10,-34),t:W2(0,8,0)};})(),
   desc:'瓮城内部视角：四面城墙合围，敌军破门外门即入包围圈，守军可自垛口四面齐射。中国城防"瓮中捉鳖"的经典设计。'},
 ];
 const POI_EN={
@@ -1886,6 +1899,7 @@ function openPOI(i){
   flyTo(p.view.p,p.view.t,1900);
 }
 function closeCard(){ activePOI=-1; card.classList.remove('show');
+  poiLayer.classList.remove('dim');   // 内景返回后恢复标注
   poiEls.forEach(e=>e.classList.remove('active')); }
 document.getElementById('c-close').addEventListener('click',closeCard);
 window.__openPOI=openPOI; // 调试/外部联动钩子
@@ -1998,7 +2012,7 @@ async function kioskLoop(my){
     const myWorld=activeWorld, list=WORLDS[myWorld].pois;
     for(let i=0;i<list.length;i++){
       if(!alive()||activeWorld!==myWorld) break;   // 观众切换世界 → 本圈作罢
-      if(performance.now()-lastActive<8000){ await wait(2000); continue; }  // 观众操作中 → 暂缓
+      if(performance.now()-lastActive<8000){ i--; await wait(2000); continue; }  // 观众操作中 → 停留当前视点暂缓（不跳过）
       openPOI(i);
       await wait(7600); if(!alive())return;
     }
@@ -2067,8 +2081,16 @@ function groundAt(x,z){
   h=ramp(x,z,-41,41,124,306,6); if(h>g)g=h;
   if(Math.abs(x)<14){ h=stH(z,112,123.2,6); if(z<124&&h>g)g=h; }   // 后三宫南踏步
   if(Math.abs(x)<10){ h=stH(z,318,306.8,6); if(z>306&&h>g)g=h; }   // 后三宫北踏步
-  // 金水桥桥面
-  if(Math.abs(z+362)<16&&Math.abs(x)<52){ h=2.95; if(h>g)g=h; }
+  // 单层台基殿宇（钦安殿/东西六宫/文华殿/武英殿）：台面高 3，相机不再沉入须弥座
+  for(const [px,pz,phw,phd] of [[0,392,15,12],[210,150,24,19],[210,230,26.5,22],[210,310,29,19],
+      [330,150,24,22],[330,230,26.5,19],[330,310,29,22],[245,-235,32,17],[-245,-235,32,17]]){
+    if(Math.abs(x-px)<=phw&&Math.abs(z-pz)<=phd){ h=3; if(h>g)g=h; break; }
+  }
+  // 金水桥桥面（仅五座桥体范围，桥间河面不抬升）
+  if(Math.abs(z+362)<15){
+    for(const [bcx,bhw] of [[0,5],[-26,3.25],[26,3.25],[-48,2.75],[48,2.75]])
+      if(Math.abs(x-bcx)<=bhw){ h=2.9; if(h>g)g=h; break; }
+  }
   return g;
 }
 function enterFPS(){
@@ -2163,7 +2185,8 @@ function flyTo(p,t,dur=1800,onDone){
   fly={p0:camera.position.clone(),t0:controls.target.clone(),
        p1:new THREE.Vector3(...p),t1:new THREE.Vector3(...t),
        st:performance.now(),dur,onDone};
-  controls.enabled=false;
+  // 不禁用 OrbitControls：飞行块每帧覆写相机，保持启用可让用户在飞行结束瞬间无缝接管拖拽
+  // （r170 的 OrbitControls 在 enabled=false 时会丢弃 pointerdown，导致"飞行后第一次拖拽失灵"）
 }
 const tourCurves={}, tourLooks={};
 tourCurves.gugong=new THREE.CatmullRomCurve3([
@@ -2191,10 +2214,12 @@ function tourSet(v,silent=false){
     tourPending=true; tourT=0; tourDir=1;
     const tc=tourCurves[activeWorld], tl=tourLooks[activeWorld];
     flyTo(tc.getPointAt(0).toArray(),tl.getPointAt(0).toArray(),1400,()=>{ tourPending=false; });
-    tourOn=true;   // 置位须在 flyTo 之后：flyTo 内部会调 tourSet(false,true)
+    tourPending=true;   // flyTo 内部 tourSet(false,true) 会清零，必须在其后重置（引导飞行期间巡航分支不接管相机）
+    tourOn=true;
     if(!silent) document.querySelector('[data-toggle="tour"]').classList.toggle('on',true);
   }else{
     tourOn=false; tourPending=false;
+    document.querySelector('[data-toggle="tour"]').classList.remove('on');   // 取消巡航时按钮高亮复位
     if(!silent){ controls.enabled=!fps.on; controls.target.copy(lastLook); }
   }
 }
@@ -2222,7 +2247,7 @@ function setXray(on){
 renderer.domElement.addEventListener('pointerdown',()=>{
   if(fps.on) return;
   poiLayer.classList.remove('dim');
-  if(fly){ fly=null; controls.enabled=true; }
+  if(fly) fly=null;   // 点击取消飞行（controls 全程启用，无需恢复）
   if(tourOn) tourSet(false);
 });
 const raycaster=new THREE.Raycaster(), ndc=new THREE.Vector2();
@@ -2268,6 +2293,7 @@ addEventListener('keydown',e=>{
   if(e.key==='Escape'){ if(fps.on){exitFPS();return;} closeCard(); dirpanel.classList.remove('show'); return; }
   if(fps.on){
     const kk=e.key.toLowerCase();
+    if(e.key===' ') e.preventDefault();   // 防止空格触发聚焦按钮的默认点击（会意外退出步行）
     if(['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright','shift'].includes(kk)){
       fps.keys.add(kk); e.preventDefault();
     }
@@ -2310,7 +2336,7 @@ function animate(){
     camera.position.lerpVectors(fly.p0,fly.p1,e);
     controls.target.lerpVectors(fly.t0,fly.t1,e);
     lastLook.copy(controls.target);
-    if(k>=1){ const cb=fly.onDone; fly=null; controls.enabled=!fps.on; if(cb)cb(); }
+    if(k>=1){ const cb=fly.onDone; fly=null; if(cb)cb(); }
   }
   if(tourOn&&tourPending===false){
     tourT+=dt/60*tourDir;
