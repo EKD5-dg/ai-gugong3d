@@ -1622,8 +1622,9 @@ function terrainH(x,z){
   function tower(idx,name,poi){
     const p=P[idx], g=new THREE.Group(); g.position.copy(p);
     const h=13+((idx*7)%3);
-    const body=new THREE.Mesh(hipFrustumGeo(21,21,16,16,h),matGWTower);
-    body.position.y=h/2-1.2; g.add(body); edged(body,edgeMatG);
+    // 下延 8 的埋地裙座：楼底随山脊侧坡起伏仍接地，四角不再悬空
+    const body=new THREE.Mesh(hipFrustumGeo(21,21,16,16,h+8),matGWTower);
+    body.position.y=(h+8)/2-8; g.add(body); edged(body,edgeMatG);
     const slab=new THREE.Mesh(new THREE.BoxGeometry(18,1.2,18),matGWLong);
     slab.position.y=h-.6; g.add(slab); edged(slab,edgeMatG);
     const room=new THREE.Mesh(hipFrustumGeo(13,13,11,11,5),matGWTower);
@@ -1650,7 +1651,7 @@ function terrainH(x,z){
     const p=P[2], g=new THREE.Group(); g.position.copy(p);
     const dir=new THREE.Vector3().subVectors(P[6],P[0]), yaw=Math.atan2(dir.x,dir.z);
     g.rotation.y=yaw; GW.guanYaw=yaw;   // 供 POI 标注做局部→世界换算
-    box(g,46,15,28, 0,7.5,0, matGWTower);
+    box(g,46,23,28, 0,3.5,0, matGWTower);   // 主体下延 8 埋地，鞍部不悬空
     box(g,9,10,3.4, 0,5,-14.2, matDoor,false);
     box(g,9,10,3.4, 0,5, 14.2, matDoor,false);
     box(g,26,1.4,20, 0,15.7,0, matGWLong,false);
@@ -1658,9 +1659,9 @@ function terrainH(x,z){
     box(t,30,7,16, 0,3.5,0, matGWTower);
     const roof=new THREE.Mesh(hipRoofGeo(34,20,5.5,.55),matGoldG); roof.position.y=7; t.add(roof); edged(roof);
     g.add(t);
-    // 瓮城两翼
-    box(g,20,10,12, -32,5,0, matGWTower);
-    box(g,20,10,12,  32,5,0, matGWTower);
+    // 瓮城两翼（同样下延埋地）
+    box(g,20,18,12, -32,1,0, matGWTower);
+    box(g,20,18,12,  32,1,0, matGWTower);
     g.userData={poi:0,world:'wall'};
     // 关城碰撞（随朝向旋转的 AABB 近似）：主体挡在墙端，瓮城两翼封边
     const yc=Math.abs(Math.cos(yaw)), ys=Math.abs(Math.sin(yaw));
@@ -1683,8 +1684,8 @@ function terrainH(x,z){
   // ── 烽火台 ×2 + 狼烟火光 ──
   [Math.floor(n*.2),Math.floor(n*.82)].forEach(idx=>{
     const p=P[idx], g=new THREE.Group(); g.position.copy(p);
-    const bbody=new THREE.Mesh(hipFrustumGeo(20,20,15.5,15.5,15),matGWTower);
-    bbody.position.y=0; g.add(bbody); edged(bbody,edgeMatG);
+    const bbody=new THREE.Mesh(hipFrustumGeo(20,20,15.5,15.5,23),matGWTower);   // 下延 8 埋地裙座
+    bbody.position.y=3.5; g.add(bbody); edged(bbody,edgeMatG);
     box(g,13,2,13, 0,14,0, matGWLong,false);
     const bowl=new THREE.Mesh(new THREE.CylinderGeometry(3.4,2.4,2.2,12),matGWLong);
     bowl.position.y=15.5; g.add(bowl);
