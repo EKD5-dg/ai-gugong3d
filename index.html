@@ -15,6 +15,7 @@
   html,body{width:100%;height:100%;overflow:hidden;background:#04070f;
     font-family:"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;color:var(--txt);
     -webkit-user-select:none;user-select:none}
+  .hud-tl .logo,#card .name,#c-name{font-family:"Noto Serif SC","STZhongsong","KaiTi","楷体",serif}
   canvas{display:block;position:fixed;inset:0;z-index:0}
 
   #vignette{position:fixed;inset:0;pointer-events:none;z-index:2;
@@ -280,7 +281,7 @@ renderer.info.autoReset=false;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.12;
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFShadowMap;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 // MSAA：给 EffectComposer 的渲染目标开 4x 多重采样（否则后期管线丢失抗锯齿）
 const _rtSize=renderer.getDrawingBufferSize(new THREE.Vector2());
@@ -291,6 +292,20 @@ renderer.domElement.addEventListener('webglcontextlost',e=>{ e.preventDefault();
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x04070f);
 scene.fog = new THREE.Fog(0x04070f, 520, 3400);
+// 天空穹顶：三档渐变贴图（夜/晨/昼），背球面，不受雾
+const SKYTEX={};
+{
+  const mkSky=(c0,c1,c2)=>{const cv=document.createElement('canvas');cv.width=2;cv.height=256;
+    const g=cv.getContext('2d');const gr=g.createLinearGradient(0,0,0,256);
+    gr.addColorStop(0,c0);gr.addColorStop(.62,c1);gr.addColorStop(1,c2);g.fillStyle=gr;g.fillRect(0,0,2,256);
+    const t=new THREE.CanvasTexture(cv);t.colorSpace=THREE.SRGBColorSpace;return t;};
+  SKYTEX.night=mkSky('#04091a','#0c1830','#20334f');
+  SKYTEX.dawn =mkSky('#0a1226','#3a4a68','#d08250');
+  SKYTEX.day  =mkSky('#5d87b8','#8fb2d8','#c9d6e4');
+}
+const skyDome=new THREE.Mesh(new THREE.SphereGeometry(5200,24,14),
+  new THREE.MeshBasicMaterial({map:SKYTEX.night,side:THREE.BackSide,fog:false,toneMapped:false,depthWrite:false}));
+skyDome.renderOrder=-1; scene.add(skyDome);
 // 环境反射（IBL）：给金属与阴面柔和的环境光泽
 {
   const pmrem=new THREE.PMREMGenerator(renderer);
@@ -326,7 +341,7 @@ const hemi=new THREE.HemisphereLight(0x7fb2e8, 0x0b0f1a, .85); scene.add(hemi);
 const amb=new THREE.AmbientLight(0x1c2740, .68); scene.add(amb);
 const sun = new THREE.DirectionalLight(0xffe8c0, 1.35); sun.position.set(340,460,260); scene.add(sun);
 sun.castShadow = true;
-sun.shadow.mapSize.set(1024,1024);
+sun.shadow.mapSize.set(2048,2048);
 sun.shadow.camera.left=-640; sun.shadow.camera.right=640;
 sun.shadow.camera.top=660;  sun.shadow.camera.bottom=-660;
 sun.shadow.camera.near=60;  sun.shadow.camera.far=1700;
@@ -337,12 +352,12 @@ const moonLight = new THREE.DirectionalLight(0xbfd0e8, .55); moonLight.position.
 const rim = new THREE.DirectionalLight(0x3fd8ff, .32);  rim.position.set(-380,300,-360); scene.add(rim);
 
 /* ═══════════ 程序化纹理工厂（每一块砖 / 每一片瓦都由此生成） ═══════════ */
-function canvasTex(w,h,draw){
+function canvasTex(w,h,draw,ns=2.4){
   const c=document.createElement('canvas'); c.width=w; c.height=h;
   draw(c.getContext('2d'),w,h);
   const t=new THREE.CanvasTexture(c);
   t.wrapS=t.wrapT=THREE.RepeatWrapping; t.colorSpace=THREE.SRGBColorSpace; t.anisotropy=8;
-  t.userData.normal=makeNormalMap(c,2.4);   // 由明度场生成凹凸法线
+  t.userData.normal=makeNormalMap(c,ns);   // 由明度场生成凹凸法线（按材质分频强度）
   return t;
 }
 function makeNormalMap(srcCanvas,strength){
@@ -364,7 +379,7 @@ function makeNormalMap(srcCanvas,strength){
   nt.wrapS=nt.wrapT=THREE.RepeatWrapping;
   return nt;
 }
-// 城砖（红色宫墙砖）
+// 城砖（红色宫墙砖：明度差 + 缝阴 + 崩角 + 白碱渍做旧）
 const texBrick=canvasTex(512,512,(g,w,h)=>{
   g.fillStyle='#5a1219'; g.fillRect(0,0,w,h);
   const bh=64,bw=128;
@@ -375,9 +390,14 @@ const texBrick=canvasTex(512,512,(g,w,h)=>{
       g.fillStyle=`rgb(${(150*l)|0},${(36*l)|0},${(46*l)|0})`;
       g.fillRect(x*bw+off+2,y*bh+2,bw-4,bh-4);
       g.fillStyle='rgba(255,215,175,.06)'; g.fillRect(x*bw+off+2,y*bh+2,bw-4,4);
+      g.strokeStyle='rgba(0,0,0,.2)'; g.lineWidth=1.5; g.strokeRect(x*bw+off+2.5,y*bh+2.5,bw-5,bh-5);
+      if(Math.random()<.16){ g.fillStyle='rgba(0,0,0,.28)';
+        g.fillRect(x*bw+off+4+Math.random()*(bw-20),y*bh+4+Math.random()*(bh-14),5+Math.random()*5,3+Math.random()*3); }
+      if(Math.random()<.1){ g.fillStyle='rgba(214,208,192,.09)';
+        g.fillRect(x*bw+off+6+Math.random()*(bw-30),y*bh+bh*.3,12,22); }
     }
   }
-});
+},3.2);
 // 灰砖（长城）
 const texGWBrick=canvasTex(512,512,(g,w,h)=>{
   g.fillStyle='#3d4349'; g.fillRect(0,0,w,h);
@@ -392,9 +412,13 @@ const texGWBrick=canvasTex(512,512,(g,w,h)=>{
     }
   }
 });
-// 汉白玉石条
+// 汉白玉石条（斜向云纹走向 + 错缝）
 const texStone=canvasTex(512,512,(g,w,h)=>{
   g.fillStyle='#8f979e'; g.fillRect(0,0,w,h);
+  g.strokeStyle='rgba(255,255,255,.05)'; g.lineWidth=1;
+  for(let i=-h;i<w;i+=17){ g.beginPath(); g.moveTo(i,0); g.lineTo(i+h,h); g.stroke(); }
+  g.strokeStyle='rgba(30,40,50,.06)';
+  for(let i=-h;i<w;i+=23){ g.beginPath(); g.moveTo(i,h); g.lineTo(i+h,0); g.stroke(); }
   const bh=84;
   for(let y=0;y<h/bh;y++){
     const off=(y%2)*106;
@@ -403,9 +427,10 @@ const texStone=canvasTex(512,512,(g,w,h)=>{
       g.fillStyle=`rgb(${(186*l)|0},${(192*l)|0},${(198*l)|0})`;
       g.fillRect(x*212+off+2,y*bh+2,208,bh-4);
       g.fillStyle='rgba(30,40,50,.25)'; g.fillRect(x*212+off+2,y*bh+bh-5,208,3);
+      g.fillStyle='rgba(255,255,255,.05)'; g.fillRect(x*212+off+2,y*bh+2,208,3);
     }
   }
-});
+},1.6);
 // 金砖墁地（室内地面）
 const texFloor=canvasTex(512,512,(g,w,h)=>{
   g.fillStyle='#191f26'; g.fillRect(0,0,w,h);
@@ -653,23 +678,26 @@ function box(parent,w,h,d,x,y,z,m,edge=true){
   g.receiveShadow=true;
   parent.add(g); return g;
 }
-// 庑殿顶：六段举折凹曲线（脊陡檐缓），顶点环共享 + 统一朝外绕序，平滑法线
+// 庑殿顶：六段举折凹曲线（脊陡檐缓）+ 檐角真起翘（角部上抬外撇），8 点环，平滑法线
 function hipRoofGeo(w,d,h,ridge=.58,curve=2.05,N=8){
   const rw=(w/2)*ridge, pos=[],uv=[],idx=[];
   const ring=(s)=>{
     const zh=d/2*(1-s), xh=w/2+(rw-w/2)*s, y=h*Math.pow(s,curve);
-    pos.push(-xh,y,zh,  xh,y,zh,  xh,y,-zh,  -xh,y,-zh);
-    uv.push(-xh/5,zh/5,  xh/5,zh/5,  xh/5,-zh/5,  -xh/5,-zh/5);
+    const lift=.009*(w+d)*Math.pow(1-s,2.2);   // 檐角起翘：檐口最大，向脊递减
+    const fl=1+.05*Math.pow(1-s,3);            // 角部外撇
+    const cx=xh*fl, cz=zh*fl, cy=y+lift;
+    pos.push(-cx,cy,cz,  0,y,cz,  cx,cy,cz,  cx,cy,0,
+             cx,cy,-cz,  0,y,-cz,  -cx,cy,-cz,  -cx,cy,0);
+    uv.push(-cx/5,cz/5, 0,cz/5, cx/5,cz/5, cx/5,0,
+            cx/5,-cz/5, 0,-cz/5, -cx/5,-cz/5, -cx/5,0);
   };
   for(let k=0;k<=N;k++) ring(k/N);
-  const vi=(k,c)=>k*4+c;
+  const vi=(k,c)=>k*8+c;
   for(let k=0;k<N;k++){
-    const a=vi(k,0),b=vi(k,1),c=vi(k,2),dd=vi(k,3);
-    const a2=vi(k+1,0),b2=vi(k+1,1),c2=vi(k+1,2),d2=vi(k+1,3);
-    idx.push(a,b,b2, a,b2,a2);      // 前坡 (+z)
-    idx.push(c,dd,d2, c,d2,c2);     // 后坡 (-z)
-    idx.push(dd,a,a2, dd,a2,d2);    // 左坡 (-x)
-    idx.push(b,c,c2, b,c2,b2);      // 右坡 (+x)
+    for(let c=0;c<8;c++){
+      const a=vi(k,c), b=vi(k,(c+1)%8), a2=vi(k+1,c), b2=vi(k+1,(c+1)%8);
+      idx.push(a,b,b2, a,b2,a2);
+    }
   }
   const g=new THREE.BufferGeometry();
   g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
@@ -787,13 +815,13 @@ function doors(parent,w,d,topY,bodyH){
   box(parent,w*.09,bodyH*.48,.6,  w*.27,topY+bodyH*.24,-d/2-.2, matDoor,false);
   box(parent,w*.15,bodyH*.6,.7, 0,topY+bodyH*.3, d/2+.25, matDoorStud,false);
 }
-// 彩画枋 + 斗拱（双跳出跳，檐下每朵斗拱都可见）
+// 彩画枋 + 斗拱（坐斗/横拱/交叉拱/斜昂四件套，InstancedMesh 檐下满铺）
 function eaveDecor(parent,w,d,y,dougong){
   // 檐下彩画带：斗拱椽望纹理（替代纯色板）
   const em=matWith('eave'+Math.round(w),()=>std({map:rep(texEave,Math.max(2,Math.round(w/9)),1),roughness:.8}));
   box(parent,w+.8,1.1,d+.8, 0,y,0, em,false);
   if(!dougong) return;
-  const nx=Math.max(4,Math.floor(w/2.6)),nz=Math.max(3,Math.floor(d/2.6));
+  const nx=Math.max(4,Math.floor(w/1.9)),nz=Math.max(3,Math.floor(d/1.9));
   const pts=[];
   for(let i=0;i<nx;i++){
     const x=-w/2+.6+i*(w-1.2)/(nx-1);
@@ -803,22 +831,30 @@ function eaveDecor(parent,w,d,y,dougong){
     const z=-d/2+.6+j*(d-1.2)/(nz-1);
     pts.push([-w/2-.9,z,-1,0],[w/2+.9,z,1,0]);
   }
-  const M=new THREE.Matrix4();
-  const im1=new THREE.InstancedMesh(new THREE.BoxGeometry(1.05,.5,1.05),matGoldDark,pts.length);
-  const im2=new THREE.InstancedMesh(new THREE.BoxGeometry(.85,.5,.85),matGoldDark,pts.length);
+  const M=new THREE.Matrix4(), E=new THREE.Euler(), Q=new THREE.Quaternion(), S1=new THREE.Vector3(1,1,1);
+  const im1=new THREE.InstancedMesh(new THREE.BoxGeometry(1.05,.5,1.05),matGoldDark,pts.length);   // 坐斗
+  const im2=new THREE.InstancedMesh(new THREE.BoxGeometry(1.5,.26,.55),matGoldDark,pts.length);    // 平置横拱（前后檐）
+  const im3=new THREE.InstancedMesh(new THREE.BoxGeometry(.55,.26,1.5),matGoldDark,pts.length);    // 交叉横拱（两山）
+  const im4=new THREE.InstancedMesh(new THREE.BoxGeometry(.22,.22,1.6),matGoldDark,pts.length);    // 斜昂（外挑下倾）
+  let i2=0,i3=0;
   pts.forEach((p,i)=>{
-    M.setPosition(p[0],y+.25,p[1]); im1.setMatrixAt(i,M);          // 第一跳（坐斗）
-    M.setPosition(p[0]+p[2]*.8,y+.72,p[1]+p[3]*.8); im2.setMatrixAt(i,M); // 第二跳（外伸出跳）
+    const ox=p[2], oz=p[3];
+    M.setPosition(p[0],y+.25,p[1]); im1.setMatrixAt(i,M);
+    if(oz!==0){ M.setPosition(p[0]+ox*.5,y+.5,p[1]+oz*.55); im2.setMatrixAt(i2++,M); }
+    else{ M.setPosition(p[0]+ox*.55,y+.5,p[1]+oz*.5); im3.setMatrixAt(i3++,M); }
+    Q.setFromEuler(E.set(.5*oz,0,-.5*ox));
+    M.compose(new THREE.Vector3(p[0]+ox*1.2,y+.82,p[1]+oz*1.2),Q,S1); im4.setMatrixAt(i,M);
   });
-  parent.add(im1,im2);
+  im2.count=i2; im3.count=i3;
+  parent.add(im1,im2,im3,im4);
 }
 // 飞檐翘角（四角起翘）
 function eaveCorners(parent,w,d,y){
   const mk=(x,z)=>{
     const grp=new THREE.Group(); grp.position.set(x,y,z);
     grp.rotation.y=Math.atan2(x,z);
-    const fin=new THREE.Mesh(new THREE.BoxGeometry(.5,.26,2.8),matGoldDark);
-    fin.position.set(0,.42,1.15); fin.rotation.x=-.52; grp.add(fin);
+    const fin=new THREE.Mesh(new THREE.BoxGeometry(.4,.22,2.0),matGoldDark);
+    fin.position.set(0,.42,.8); fin.rotation.x=-.42; grp.add(fin);
     parent.add(grp);
   };
   mk(w/2-.4,d/2-.4); mk(-w/2+.4,d/2-.4); mk(w/2-.4,-d/2+.4); mk(-w/2+.4,-d/2+.4);
@@ -924,7 +960,12 @@ function interior(g,o,topY){
     sp.position.set(0,topY+bodyH-4.5,d/2-6.5); g.add(sp);
   }
 }
-// 宫殿生成器（自动注册碰撞：殿身+墙内区域，避免第一人称穿墙）
+// 宫殿生成器（自动注册碰撞；组内局部坐标的殿宇（城楼/山亭）传 collide:false 关闭）
+const LATTICE_GLOW=[];   // 格扇窗光材质注册表：夜景呼吸
+const blobTex=(()=>{const c=document.createElement('canvas');c.width=c.height=128;
+  const g=c.getContext('2d');const gr=g.createRadialGradient(64,64,6,64,64,64);
+  gr.addColorStop(0,'rgba(0,0,0,.5)');gr.addColorStop(1,'rgba(0,0,0,0)');g.fillStyle=gr;g.fillRect(0,0,128,128);
+  return new THREE.CanvasTexture(c);})();
 function palace(o){
   const {w,d,bodyH=10,tiers=1,double=false,pyr=false,roofH=8,x=0,y=0,z=0}=o;
   const g=new THREE.Group(); g.position.set(x,y,z);
@@ -938,6 +979,9 @@ function palace(o){
   }
   const topY=tiers*3;
   if(tiers>0) stairs(g,w*.42,topY,-(d+8+(tiers-1)*9)/2);
+  const blob=new THREE.Mesh(new THREE.PlaneGeometry(w+30,d+30),
+    new THREE.MeshBasicMaterial({map:blobTex,transparent:true,opacity:.5,depthWrite:false}));
+  blob.rotation.x=-Math.PI/2; blob.position.y=.16; g.add(blob);   // 根部接触阴影（补阴影贴图分辨率不足）
   if(o.interior){
     interior(g,{...o,topY,bm},topY);
   }else{
@@ -948,8 +992,10 @@ function palace(o){
     doors(g,w,d,topY,bodyH);
     // 格扇门/窗满披立面（殿宇正背两面）
     if(bodyH>=6){
+      const lt=rep(texLattice,Math.max(2,Math.round(w/7)),1);
       const lm=matWith('lat'+Math.round(w)+'x'+Math.round(bodyH),
-        ()=>std({map:rep(texLattice,Math.max(2,Math.round(w/7)),1),roughness:.72}));
+        ()=>{const m=std({map:lt,roughness:.72,emissive:new THREE.Color(0xffb46a),emissiveMap:lt,emissiveIntensity:0});
+          LATTICE_GLOW.push(m); return m;});
       box(g,w-1.6,bodyH*.6,.3, 0,topY+bodyH*.34,-d/2-.14, lm,false);
       box(g,w-1.6,bodyH*.6,.3, 0,topY+bodyH*.34, d/2+.14, lm,false);
     }
@@ -1225,7 +1271,9 @@ function huabiao(x,z){
 const matPlatform=new THREE.MeshStandardMaterial({color:0x0a1120,roughness:.95});
 const matLand    =new THREE.MeshStandardMaterial({color:0x0e1727,roughness:.95});
 const matWater   =new THREE.MeshStandardMaterial({color:0x082c40,roughness:.25,metalness:.2,
-  emissive:0x0a3b52,emissiveIntensity:.5});
+  emissive:0x0a3b52,emissiveIntensity:.5,
+  normalMap:texPave.userData.normal,normalScale:new THREE.Vector2(.38,.38)});
+matWater.normalMap.repeat.set(7,3);
 const matPlaza   =std({map:rep(texPlaza,6,20),roughness:.95});
 const matPlaza2  =std({map:rep(texPlaza,7,9),roughness:.9,color:0xd8e4f4});
 {
@@ -1488,7 +1536,7 @@ function terrainH(x,z){
   gw.add(terrain);
   // 山坡散树（双实例化：树干+皱冠，两处 draw call，随机姿态与色相）
   {
-    const N=280;
+    const N=650;
     const canG=jitterGeo(new THREE.IcosahedronGeometry(1.9,1),.55);
     const trkG=new THREE.CylinderGeometry(.2,.34,2.4,6);
     const imC=new THREE.InstancedMesh(canG,matGWTree,N);
@@ -1496,9 +1544,9 @@ function terrainH(x,z){
     const M=new THREE.Matrix4(), C=new THREE.Color(), S=new THREE.Vector3();
     let seed=7; const rnd=()=>{seed=(seed*16807)%2147483647; return seed/2147483647;};
     let placed=0, guard=0;
-    while(placed<N&&guard++<4000){
+    while(placed<N&&guard++<9000){
       const x=-1150+rnd()*2300, z=-750+rnd()*1500;
-      if(Math.abs(z-ridgeZ(x))<48) continue;
+      if(Math.abs(z-ridgeZ(x))<22) continue;
       const h=GW.gridH(x,z);
       if(h<3||h>70) continue;
       const s=.7+rnd()*1.2;
@@ -1786,18 +1834,18 @@ function terrainH(x,z){
 
 /* ═══════════ POI 数据（两套世界） ═══════════ */
 const POIS_G=[
- {name:'午门',en:'MERIDIAN GATE',year:'明永乐十八年 · 1420',pos:[0,42,-480],view:{p:[0,30,-606],t:[0,26,-480]},
+ {name:'午门',en:'MERIDIAN GATE',year:'明永乐十八年 · 1420',pos:[0,42,-480],view:{p:[52,14,-594],t:[-4,22,-482]},
   desc:'紫禁城正门。居中向阳，位当子午，故名午门。城台上五凤楼巍然，明清颁朔、献俘大典在此举行，凯旋将士亦于此受俘。'},
  {name:'内金水桥',en:'GOLDEN WATER BRIDGES',year:'明代 · 内金水河',pos:[0,11,-362],view:{p:[0,26,-428],t:[0,6,-362]},
   desc:'跨内金水河的五座汉白玉石桥，中为御路桥，两侧依次为王公桥、品级桥。民间有"暗合五德"之说。每一块栏板望柱均可放大细看。'},
  {name:'太和门',en:'GATE OF SUPREME HARMONY',year:'明永乐十八年 · 1420',pos:[0,32,-300],view:{p:[0,24,-368],t:[0,20,-300]},
   desc:'外朝正门，明代"御门听政"之所。门前广场开阔数万平，白石栏板如雪，曾是明代常朝与重大典礼的仪仗之所。'},
- {name:'太和殿',en:'HALL OF SUPREME HARMONY',year:'1420 始建 · 1695 现存',pos:[0,52,-115],view:{p:[0,40,-220],t:[0,34,-115]},
+ {name:'太和殿',en:'HALL OF SUPREME HARMONY',year:'1420 始建 · 1695 现存',pos:[0,52,-115],view:{p:[46,30,-236],t:[4,30,-116]},
   desc:'俗称金銮殿，现存规模最大的木结构大殿。重檐庑殿顶、檐角列脊兽（艺术化示意，模型以鸱吻示意；文献中"十瑞兽"为神话计数）。殿内金砖墁地、蟠龙藻井之下设髹金雕龙宝座，上悬"建极绥猷"匾（"正大光明"在乾清宫）——点击下方按钮可步入殿内。',inner:{p:[0,12.8,-124.5],t:[0,9.5,-103.5]}},
  {name:'中和殿',en:'HALL OF CENTRAL HARMONY',year:'明永乐十八年 · 1420',pos:[0,44,-45],view:{p:[0,54,-100],t:[0,28,-45]},
   desc:'三大殿之一，平面呈正方形，单檐四角攒尖顶，上置鎏金宝顶。皇帝赴太和殿大典前在此小憩、演习礼仪。'},
  {name:'保和殿',en:'HALL OF PRESERVING HARMONY',year:'明永乐十八年 · 1420',pos:[0,44,25],view:{p:[0,38,-44],t:[0,30,25]},
-  desc:'三大殿之一，重檐歇山顶。清代殿试自乾隆五十四年起在此举行；除夕、正月十五赐宴外藩王公亦于此殿。'},
+  desc:'三大殿之一，重檐大殿（屋顶形制为艺术化示意）。清代殿试自乾隆五十四年起在此举行；除夕、正月十五赐宴外藩王公亦于此殿。'},
  {name:'乾清门',en:'GATE OF HEAVENLY PURITY',year:'明代 · 内廷正门',pos:[0,26,100],view:{p:[0,28,36],t:[0,16,100]},
   desc:'内廷正门，门前金狮鎏金、琉璃影壁映辉。清代康熙帝御门听政于此，军机值房列于两侧，为国事枢要之地。'},
  {name:'乾清宫',en:'PALACE OF HEAVENLY PURITY',year:'明永乐十八年 · 1420',pos:[0,40,165],view:{p:[0,30,100],t:[0,26,165]},
@@ -1808,7 +1856,7 @@ const POIS_G=[
   desc:'明代皇后寝宫，取"地宁"之义。清代仿盛京旧制改为萨满祭祀之所，东暖阁设为大婚洞房。据载康熙、同治、光绪帝婚礼均曾以此为洞房。'},
  {name:'御花园 · 钦安殿',en:'IMPERIAL GARDEN',year:'明永乐十八年 · 1420',pos:[0,26,392],view:{p:[0,36,326],t:[0,14,392]},
   desc:'中轴北端宫廷园林，古柏藤萝、亭台奇石错落。钦安殿居中供玄天上帝，堆秀山御景亭为重阳登高之处，连理柏见证六百年风雨。'},
- {name:'神武门',en:'GATE OF DIVINE PROWESS',year:'明永乐十八年 · 1420',pos:[0,38,480],view:{p:[0,42,585],t:[0,24,480]},
+ {name:'神武门',en:'GATE OF DIVINE PROWESS',year:'明永乐十八年 · 1420',pos:[0,38,480],view:{p:[-42,16,576],t:[2,20,482]},
   desc:'紫禁城北门，旧设钟鼓晨昏报时。1925 年故宫博物院成立时于门上悬挂"故宫博物院"匾额，今为观众参观出口，门外即是景山。'},
  {name:'角楼',en:'CORNER TOWER',year:'明永乐十八年 · 1420',pos:[376,32,-480],view:{p:[498,48,-596],t:[376,16,-480]},
   desc:'城墙四隅各有一座角楼，三重檐、民间称"九梁十八柱七十二条脊"的精巧木构（不同计数口径有出入，模型为艺术化示意），轮廓如亭如阁，是紫禁城最上镜的标志之一。'},
@@ -1991,18 +2039,19 @@ orbitBtn.addEventListener('click',()=>{
 
 /* ═══════════ 光照预设（夜/晨/昼） ═══════════ */
 const LIGHTS={
-  night:{bg:0x04070f,fog:[0x04070f,520,3400],hemi:.85,amb:.68,sun:[0xffe8c0,1.35],fill:.55,fill2:.32,moonL:.55,moon:1,stars:.7,bloom:.75,expo:1.12},
-  dawn:{bg:0x0d1626,fog:[0x0d1626,430,3100],hemi:1.05,amb:.8,sun:[0xffd2a0,1.7],fill:.7,fill2:.45,moonL:.12,moon:0,stars:.25,bloom:.6,expo:1.06},
-  day:{bg:0x24384f,fog:[0x24384f,700,4200],hemi:1.3,amb:.95,sun:[0xfff3e0,2.1],fill:.85,fill2:.6,moonL:0,moon:0,stars:0,bloom:.4,expo:1}
+  night:{bg:0x04070f,fog:[0x04070f,520,3400],hemi:.5,hemiG:0x0b1220,amb:.6,sun:[0xbfd0e8,.5],sunPos:[-900,420,-1150],fill:.35,fill2:.28,moonL:.85,moon:1,stars:.7,bloom:.75,expo:1.12},
+  dawn:{bg:0x0d1626,fog:[0x0d1626,430,3100],hemi:.9,hemiG:0x1a2233,amb:.75,sun:[0xffb46a,1.6],sunPos:[600,110,-260],fill:.5,fill2:.3,moonL:0,moon:0,stars:0,bloom:.6,expo:1.06},
+  day:{bg:0x24384f,fog:[0x24384f,700,4200],hemi:1.25,hemiG:0x2a3440,amb:.9,sun:[0xfff3e0,2.1],sunPos:[300,700,150],fill:.85,fill2:.6,moonL:0,moon:0,stars:0,bloom:.4,expo:1}
 };
 let lightMode='night';
 function applyLights(name){
   const L=LIGHTS[name]||LIGHTS.night;
   scene.background.set(L.bg);
   scene.fog.color.set(L.fog[0]); scene.fog.near=L.fog[1]; scene.fog.far=L.fog[2];
-  hemi.intensity=L.hemi; amb.intensity=L.amb;
-  sun.intensity=L.sun[1]; sun.color.set(L.sun[0]);
+  hemi.intensity=L.hemi; hemi.groundColor.set(L.hemiG); amb.intensity=L.amb;
+  sun.intensity=L.sun[1]; sun.color.set(L.sun[0]); sun.position.set(...L.sunPos);   // 三档各有太阳方位：夜=冷月位，晨=低角度暖阳
   fill.intensity=L.fill; fill2.intensity=L.fill2; moonLight.intensity=L.moonL;
+  skyDome.material.map=SKYTEX[name]||SKYTEX.night; skyDome.material.needsUpdate=true;
   fx.moon.visible=!!L.moon;
   fx.stars.material.opacity=.7*L.stars; fx.stars.visible=L.stars>0;
   bloom.strength=L.bloom; renderer.toneMappingExposure=L.expo;
@@ -2418,6 +2467,10 @@ function animate(){
     fx.axis2.material.opacity=.22+.1*Math.sin(t*1.6);
   }
   matWater.emissiveIntensity=.42+.18*Math.sin(t*1.2); // 水光呼吸
+  matWater.normalMap.offset.set(t*.018, t*.009);       // 水面缓流
+  // 格扇窗光：夜档呼吸，晨档微光，昼档熄
+  const latGlow = lightMode==='night' ? .9+.18*Math.sin(t*1.1) : (lightMode==='dawn' ? .22 : 0);
+  for(let i=0;i<LATTICE_GLOW.length;i++) LATTICE_GLOW[i].emissiveIntensity=latGlow;
   // 烽火台狼烟火光
   GW.beacons.forEach((b,i)=>{
     const f=.85+.3*Math.sin(t*7+i*2)+.12*Math.sin(t*23+i);
