@@ -291,7 +291,7 @@ renderer.domElement.addEventListener('webglcontextlost',e=>{ e.preventDefault();
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x04070f);
-scene.fog = new THREE.Fog(0x04070f, 520, 3400);
+scene.fog = new THREE.Fog(0x182a42, 520, 3400);
 // 天空穹顶：三档渐变贴图（夜/晨/昼），背球面，不受雾
 const SKYTEX={};
 {
@@ -635,9 +635,9 @@ const matGWLong  = gwBrickMat(40,2.4);
 const matGWRibbon= matWith('gwribbon',()=>std({map:rep(texGWBrick,1,1),roughness:.85,side:THREE.DoubleSide}));
 const matGWMerlon= std({color:0x8a929c,roughness:.82,emissive:0x11141a});   // 垛口：整石哑光（非砖纹像素块）
 const matGWTree  = matWith('gwtree',()=>std({color:0xffffff,roughness:1}));
-const matGold    = roofMat('gold',texRoof,1,1,0x1a1204); matGold.side=THREE.DoubleSide;
-const matGoldG   = roofMat('goldg',texRoofG,1,1,0x0a0d10); matGoldG.side=THREE.DoubleSide;
-const matGoldAmber=roofMat('amber',texRoof,1,1,0x2a1400); matGoldAmber.side=THREE.DoubleSide; matGoldAmber.color=new THREE.Color(0xd4a860); // 后宫偏琥珀
+const matGold    = roofMat('gold',texRoof,1,1,0x7a5a28); matGold.side=THREE.DoubleSide;
+const matGoldG   = roofMat('goldg',texRoofG,1,1,0x11151a); matGoldG.side=THREE.DoubleSide;
+const matGoldAmber=roofMat('amber',texRoof,1,1,0x6a4a20); matGoldAmber.side=THREE.DoubleSide; matGoldAmber.color=new THREE.Color(0xd4a860); // 后宫偏琥珀
 const matGoldDark= std({color:0x93702c,roughness:.55,metalness:.3});
 const matWallDark= std({color:0x571219,roughness:.85});
 const matMarble  = stoneMat(4,4);
@@ -772,7 +772,10 @@ function roundedShape(w,h,r){ return roundedPath(new THREE.Shape(),w,h,r); }
 // 垂脊（四条戗脊沿屋面棱线）：按凹曲举折分段拟合 + 渐细截面，直弦不再悬空于曲面
 function hipRidges(parent,w,d,h,ridge=.55,y0=0,curve=2.05){
   const rw=(w/2)*ridge;
-  const pt=(sx,sz,s)=>new THREE.Vector3(sx*(w/2+(rw-w/2)*s), y0+h*Math.pow(s,curve), sz*(d/2)*(1-s));
+  const pt=(sx,sz,s)=>{   // 与 hipRoofGeo 同参随动：起翘+外撇，戗脊不再沉入屋面
+    const fl=1+.05*Math.pow(1-s,3), lift=.009*(w+d)*Math.pow(1-s,2.2);
+    return new THREE.Vector3(sx*(w/2+(rw-w/2)*s)*fl, y0+h*Math.pow(s,curve)+lift, sz*(d/2)*(1-s)*fl);
+  };
   const up=new THREE.Vector3(0,1,0), q=new THREE.Quaternion();
   const SEG=6, items=[];
   for(const sx of [1,-1]) for(const sz of [1,-1]){
@@ -1830,6 +1833,14 @@ function terrainH(x,z){
   const moon=new THREE.Mesh(new THREE.SphereGeometry(46,24,18),
     new THREE.MeshBasicMaterial({color:0xdceafb,fog:false,toneMapped:false}));
   moon.position.set(-1250,520,-1350); scene.add(moon); fx.moon=moon;
+  // 月晕：additive 径向渐变 sprite
+  const haloC=document.createElement('canvas'); haloC.width=haloC.height=128;
+  const hg=haloC.getContext('2d'); const hgr=hg.createRadialGradient(64,64,10,64,64,64);
+  hgr.addColorStop(0,'rgba(205,222,255,.55)'); hgr.addColorStop(.4,'rgba(160,190,255,.12)'); hgr.addColorStop(1,'rgba(160,190,255,0)');
+  hg.fillStyle=hgr; hg.fillRect(0,0,128,128);
+  const haloS=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(haloC),
+    transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,toneMapped:false,fog:false}));
+  haloS.scale.set(340,340,1); haloS.position.copy(moon.position); scene.add(haloS);
 }
 
 /* ═══════════ POI 数据（两套世界） ═══════════ */
@@ -2039,9 +2050,9 @@ orbitBtn.addEventListener('click',()=>{
 
 /* ═══════════ 光照预设（夜/晨/昼） ═══════════ */
 const LIGHTS={
-  night:{bg:0x04070f,fog:[0x04070f,520,3400],hemi:.5,hemiG:0x0b1220,amb:.6,sun:[0xbfd0e8,.5],sunPos:[-900,420,-1150],fill:.35,fill2:.28,moonL:.85,moon:1,stars:.7,bloom:.75,expo:1.12},
-  dawn:{bg:0x0d1626,fog:[0x0d1626,430,3100],hemi:.9,hemiG:0x1a2233,amb:.75,sun:[0xffb46a,1.6],sunPos:[600,110,-260],fill:.5,fill2:.3,moonL:0,moon:0,stars:0,bloom:.6,expo:1.06},
-  day:{bg:0x24384f,fog:[0x24384f,700,4200],hemi:1.25,hemiG:0x2a3440,amb:.9,sun:[0xfff3e0,2.1],sunPos:[300,700,150],fill:.85,fill2:.6,moonL:0,moon:0,stars:0,bloom:.4,expo:1}
+  night:{bg:0x04070f,fog:[0x182a42,520,3400],hemi:.5,hemiG:0x0b1220,amb:.6,sun:[0xbfd0e8,.5],sunPos:[-900,420,-1150],fill:.35,fill2:.28,moonL:.85,moon:1,stars:.7,bloom:.75,expo:1.12},
+  dawn:{bg:0x0d1626,fog:[0x3d4a63,430,3100],hemi:.9,hemiG:0x1a2233,amb:.75,sun:[0xffb46a,1.6],sunPos:[600,110,-260],fill:.5,fill2:.3,moonL:0,moon:0,stars:0,bloom:.6,expo:1.06},
+  day:{bg:0x24384f,fog:[0xa9bfd4,700,4200],hemi:1.25,hemiG:0x2a3440,amb:.9,sun:[0xfff3e0,2.1],sunPos:[300,700,150],fill:.85,fill2:.6,moonL:0,moon:0,stars:0,bloom:.4,expo:1}
 };
 let lightMode='night';
 function applyLights(name){
@@ -2055,6 +2066,8 @@ function applyLights(name){
   fx.moon.visible=!!L.moon;
   fx.stars.material.opacity=.7*L.stars; fx.stars.visible=L.stars>0;
   bloom.strength=L.bloom; renderer.toneMappingExposure=L.expo;
+  const goldI = name==='night' ? .5 : (name==='dawn' ? .15 : 0);   // 金顶夜色回归：夜档琉璃自发光
+  matGold.emissiveIntensity=goldI; matGoldAmber.emissiveIntensity=goldI; matGoldG.emissiveIntensity=goldI*.6;
   document.querySelectorAll('[data-light]').forEach(b=>b.classList.toggle('on',b.dataset.light===name));
   lightMode=name;
 }
