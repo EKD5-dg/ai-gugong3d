@@ -343,8 +343,8 @@ const amb=new THREE.AmbientLight(0x1c2740, .68); scene.add(amb);
 const sun = new THREE.DirectionalLight(0xffe8c0, 1.35); sun.position.set(340,460,260); scene.add(sun);
 sun.castShadow = true;
 sun.shadow.mapSize.set(4096,4096);
-sun.shadow.camera.left=-640; sun.shadow.camera.right=640;
-sun.shadow.camera.top=660;  sun.shadow.camera.bottom=-660;
+sun.shadow.camera.left=-560; sun.shadow.camera.right=560;
+sun.shadow.camera.top=620;  sun.shadow.camera.bottom=-620;
 sun.shadow.camera.near=60;  sun.shadow.camera.far=1700;
 sun.shadow.bias=-0.0006; sun.shadow.normalBias=.8;
 const fill = new THREE.DirectionalLight(0x9fd0ff, .55); fill.position.set(60,160,-520); scene.add(fill);
@@ -523,7 +523,7 @@ const texPave=canvasTex(512,512,(g,w,h)=>{
     g.fillStyle='rgba(255,255,255,.06)'; g.fillRect(lx+2,ly+2,lw,2);
   }
 });
-// 格扇门/窗（朱红格心 + 金线菱花）
+// 格扇门/窗（朱红格心 + 金线菱花，法线 2.6 让窗棂有凹凸）
 const texLattice=canvasTex(256,512,(g,w,h)=>{
   g.fillStyle='#7c1a20'; g.fillRect(0,0,w,h);
   g.strokeStyle='#c9a24a'; g.lineWidth=10; g.strokeRect(7,7,w-14,h-14);
@@ -534,17 +534,18 @@ const texLattice=canvasTex(256,512,(g,w,h)=>{
   }
   g.fillStyle='#570d12'; g.fillRect(12,h*.44,w-24,h*.14);   // 绦环板
   g.strokeStyle='#c9a24a'; g.lineWidth=2; g.strokeRect(12,h*.44,w-24,h*.14);
-});
-// 檐下斗拱椽望彩画带
+},2.6);
+// 檐下斗拱椽望彩画带（提亮金拱与朱椽头，近景可辨）
 const texEave=canvasTex(512,64,(g,w,h)=>{
-  g.fillStyle='#142f38'; g.fillRect(0,0,w,h);
+  g.fillStyle='#1a4250'; g.fillRect(0,0,w,h);
   for(let x=6;x<w;x+=64){
-    g.fillStyle='#c9a24a'; g.fillRect(x,8,26,22);        // 坐斗
-    g.fillStyle='#8a6a2c'; g.fillRect(x+16,16,22,14);    // 出跳拱
-    g.fillStyle='#5a3c14'; g.fillRect(x+42,8,12,30);     // 椽头
+    g.fillStyle='#e0b458'; g.fillRect(x,8,26,22);        // 坐斗
+    g.fillStyle='#b08634'; g.fillRect(x+16,16,22,14);    // 出跳拱
+    g.fillStyle='#8a2a22'; g.fillRect(x+42,8,12,30);     // 朱椽头
+    g.strokeStyle='rgba(0,0,0,.3)'; g.lineWidth=1.5; g.strokeRect(x,8,26,22);
   }
-  g.fillStyle='rgba(201,162,74,.55)'; g.fillRect(0,h-6,w,6);
-});
+  g.fillStyle='rgba(224,180,88,.7)'; g.fillRect(0,h-6,w,6);
+},2.0);
 // 匾额：太和殿"建极绥猷" / 乾清宫"正大光明"（分匾，避免宣传口径混淆）
 const texPlaqueJianJi=canvasTex(512,128,(g,w,h)=>{
   g.fillStyle='#38151c'; g.fillRect(0,0,w,h);
@@ -709,24 +710,32 @@ function box(parent,w,h,d,x,y,z,m,edge=true){
   g.receiveShadow=true;
   parent.add(g); return g;
 }
-// 庑殿顶：六段举折凹曲线（脊陡檐缓）+ 檐角真起翘（角部上抬外撇），8 点环，平滑法线
+// 庑殿顶：六段举折凹曲线（脊陡檐缓）+ 檐角真起翘 + 真几何瓦垄（坡向正弦垄沟），12 点环
 function hipRoofGeo(w,d,h,ridge=.58,curve=2.05,N=8){
   const rw=(w/2)*ridge, pos=[],uv=[],idx=[];
+  const liftAt=s=>.009*(w+d)*Math.pow(1-s,2.2);
   const ring=(s)=>{
     const zh=d/2*(1-s), xh=w/2+(rw-w/2)*s, y=h*Math.pow(s,curve);
-    const lift=.009*(w+d)*Math.pow(1-s,2.2);   // 檐角起翘：檐口最大，向脊递减
+    const lift=liftAt(s);
     const fl=1+.05*Math.pow(1-s,3);            // 角部外撇
     const cx=xh*fl, cz=zh*fl, cy=y+lift;
-    pos.push(-cx,cy,cz,  0,y,cz,  cx,cy,cz,  cx,cy,0,
-             cx,cy,-cz,  0,y,-cz,  -cx,cy,-cz,  -cx,cy,0);
-    uv.push(-cx/5,cz/5, 0,cz/5, cx/5,cz/5, cx/5,0,
-            cx/5,-cz/5, 0,-cz/5, -cx/5,-cz/5, -cx/5,0);
+    const amp=.16*(1-s);                        // 瓦垄沟：檐深脊浅
+    const groove=(px,pz)=>amp*(.5+.25*Math.sin(px*.45)+.25*Math.sin(pz*.45));
+    // 显式 12 点：前坡(角+2内点) / 右坡(角+2内点) / 后坡 / 左坡；角部带起翘，内点带垄沟
+    const P=(X,Z,liftOn)=>[X, y+(liftOn?lift:0)+groove(X,Z), Z];
+    const V=[
+      P(-cx,cz,1), P(-cx/3,cz,0), P(cx/3,cz,0), P(cx,cz,1),
+      P(cx,cz/3,0), P(cx,-cz/3,0),
+      P(cx,-cz,1), P(cx/3,-cz,0), P(-cx/3,-cz,0), P(-cx,-cz,1),
+      P(-cx,-cz/3,0), P(-cx,cz/3,0)
+    ];
+    V.forEach(v=>{ pos.push(v[0],v[1],v[2]); uv.push(v[0]/5,v[2]/5); });
   };
   for(let k=0;k<=N;k++) ring(k/N);
-  const vi=(k,c)=>k*8+c;
+  const vi=(k,c)=>k*12+c;
   for(let k=0;k<N;k++){
-    for(let c=0;c<8;c++){
-      const a=vi(k,c), b=vi(k,(c+1)%8), a2=vi(k+1,c), b2=vi(k+1,(c+1)%8);
+    for(let c=0;c<12;c++){
+      const a=vi(k,c), b=vi(k,(c+1)%12), a2=vi(k+1,c), b2=vi(k+1,(c+1)%12);
       idx.push(a,b,b2, a,b2,a2);
     }
   }
@@ -1513,22 +1522,28 @@ for(let gx=-3;gx<=3;gx++) for(let gz=0;gz<5;gz++){
     {geo:new THREE.SphereGeometry(.14,6,5),m:new THREE.Matrix4().makeTranslation(0,1.32,0)}
   ]);
   const matPerson=new THREE.MeshStandardMaterial({color:0x2a3242,roughness:.9});
-  const zones=[[-430,-330,-45,45],[-292,-178,-56,56],[74,122,-26,26],[136,300,-52,-44],[136,300,44,52],[330,470,-40,40]];
+  const zones=[[-430,-378,-45,45],[-290,-178,-56,56],[74,114,-26,26],[136,300,-56,-46],[136,300,46,56],[330,470,-40,40]];
+  // 禁落区：内金水河/乾清门城台/台基边坡——落点重生成
+  const rej=[[-62,62,-376,-348],[-30,30,86,114],[-48,-38,116,314],[38,48,116,314],[-28,28,116,126],[-28,28,-170,-158]];
+  const bad=(x,z)=>rej.some(r=>x>=r[0]&&x<=r[1]&&z>=r[2]&&z<=r[3]);
   const people=[]; let seed=99;
   const rnd=()=>{seed=(seed*48271)%2147483647;return seed/2147483647;};
   for(let k=0;k<220;k++){
     const zn=zones[k%zones.length];
-    people.push({x:zn[2]+rnd()*(zn[3]-zn[2]), z:zn[0]+rnd()*(zn[1]-zn[0]),
-                 s:.85+rnd()*.35, r:rnd()*6.28});
+    let x,z,guard=0;
+    do{ x=zn[2]+rnd()*(zn[3]-zn[2]); z=zn[0]+rnd()*(zn[1]-zn[0]); }while(bad(x,z)&&guard++<8);
+    people.push({x, z, z0:zn[0], z1:zn[1],
+                 s:.85+rnd()*.35, spd:.5+rnd()*.9, dir:rnd()<.5?1:-1});
   }
   const im=new THREE.InstancedMesh(personGeo,matPerson,people.length);
   const M=new THREE.Matrix4(),Q=new THREE.Quaternion(),S=new THREE.Vector3(),A=new THREE.Vector3(0,1,0);
   people.forEach((p,i)=>{
-    Q.setFromAxisAngle(A,p.r);
+    Q.setFromAxisAngle(A,p.dir>0?0:Math.PI);
     M.compose(new THREE.Vector3(p.x,.12,p.z),Q,S.set(p.s,p.s,p.s));
     im.setMatrixAt(i,M);
   });
-  fx.crowd=im; fx.crowdMax=people.length; fx.crowd.count=fx.crowdMax; city.add(im);
+  fx.crowd=im; fx.crowdMax=people.length; fx.crowd.count=fx.crowdMax; fx.crowdPeople=people;
+  fx._cm=M; fx._cq=Q; fx._cs=S; fx._ca=A; city.add(im);
 }
 
 // —— 程序化人群结束 ——
@@ -1991,6 +2006,25 @@ function terrainH(x,z){
     p.rotation.x=-Math.PI/2; p.position.set(x,.45,z); p.userData.o=0;
     scene.add(p); fx.glints.push(p);
   });
+  // 昼档云影：三块柔和暗斑随云缓移
+  const shadowC=document.createElement('canvas'); shadowC.width=shadowC.height=128;
+  { const sg2=shadowC.getContext('2d'); const sgr2=sg2.createRadialGradient(64,64,10,64,64,64);
+    sgr2.addColorStop(0,'rgba(6,10,18,.5)'); sgr2.addColorStop(1,'rgba(6,10,18,0)');
+    sg2.fillStyle=sgr2; sg2.fillRect(0,0,128,128); }
+  fx.cloudShadows=[];
+  for(let k=0;k<3;k++){
+    const p=new THREE.Mesh(new THREE.PlaneGeometry(420,300),
+      new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(shadowC),transparent:true,opacity:0,depthWrite:false}));
+    p.rotation.x=-Math.PI/2; p.position.set(-900+k*620,1.2,-300+k*260);
+    scene.add(p); fx.cloudShadows.push(p);
+  }
+  // 桥拱倒影近似：五桥下水暗椭圆
+  const darkE=new THREE.MeshBasicMaterial({color:0x04101c,transparent:true,opacity:.4,depthWrite:false});
+  [[0,5],[-26,3.25],[26,3.25],[-48,2.75],[48,2.75]].forEach(([bx,bw])=>{
+    const e=new THREE.Mesh(new THREE.CircleGeometry(1,18),darkE);
+    e.rotation.x=-Math.PI/2; e.scale.set(bw*.9,15,1); e.position.set(bx,.31,-362);
+    city.add(e);
+  });
 }
 
 /* ═══════════ POI 数据（两套世界） ═══════════ */
@@ -2202,7 +2236,8 @@ orbitBtn.addEventListener('click',()=>{
 const LIGHTS={
   night:{bg:0x04070f,fog:[0x182a42,520,3400],hemi:.5,hemiG:0x0b1220,amb:.6,sun:[0xbfd0e8,.5],sunPos:[-900,420,-1150],fill:.35,fill2:.28,moonL:.85,moon:1,stars:.7,bloom:.75,expo:1.12},
   dawn:{bg:0x0d1626,fog:[0x3d4a63,430,3100],hemi:.9,hemiG:0x1a2233,amb:.75,sun:[0xffb46a,1.6],sunPos:[600,110,-260],fill:.5,fill2:.3,moonL:0,moon:0,stars:0,bloom:.6,expo:1.06},
-  day:{bg:0x24384f,fog:[0xa9bfd4,700,4200],hemi:1.25,hemiG:0x2a3440,amb:.9,sun:[0xfff3e0,2.1],sunPos:[300,700,150],fill:.85,fill2:.6,moonL:0,moon:0,stars:0,bloom:.4,expo:1}
+  day:{bg:0xa9bfd4,fog:[0xa9bfd4,700,4200],hemi:1.25,hemiG:0x2a3440,amb:.9,sun:[0xfff3e0,2.1],sunPos:[300,700,150],fill:.85,fill2:.6,moonL:0,moon:0,stars:0,bloom:.3,expo:.96},
+  /* 昼档：广场天光补偿 + 地形无自发光 + 描边最弱 */
 };
 let lightMode='night';
 function applyLights(name){
@@ -2649,6 +2684,10 @@ function animate(){
   matWater.normalMap.offset.set(t*.018, t*.009);       // 水面缓流
   matWaterMoat.normalMap.offset.set(t*.012, t*.006);   // 护城河独立流向
   if(fx.clouds) fx.clouds.forEach((c2,i)=>{ c2.position.x+=dt*(3+i*.6); if(c2.position.x>1500) c2.position.x=-1500; });
+  if(fx.cloudShadows) fx.cloudShadows.forEach((p,i)=>{                    // 云影随云
+    p.position.x=fx.clouds[i].position.x*.92;
+    p.material.opacity=lightMode==='day'?.34:(lightMode==='dawn'?.2:0);
+  });
   // 英雄时刻：晨档金顶扫光每 16 秒扫过一次
   if(fx.sweep){
     if(lightMode==='dawn'){
@@ -2658,6 +2697,18 @@ function animate(){
     } else fx.sweep.material.opacity=0;
   }
   if(fx.glints) fx.glints.forEach((p,i)=>{ p.material.opacity=p.userData.o*(.85+.15*Math.sin(t*2.1+i*2.2)); });
+  // 人群沿区带缓行（摆臂感用微幅侧移近似）
+  if(fx.crowd&&fx.crowdPeople){
+    const M=fx._cm,Q=fx._cq,S=fx._cs,A=fx._ca;
+    fx.crowdPeople.forEach((p,i)=>{
+      p.z+=p.dir*p.spd*dt;
+      if(p.z>p.z1){p.z=p.z1;p.dir=-1;} if(p.z<p.z0){p.z=p.z0;p.dir=1;}
+      Q.setFromAxisAngle(A,p.dir>0?0:Math.PI);
+      M.compose(new THREE.Vector3(p.x+Math.sin(t*4+i)*.06,.12,p.z),Q,S.set(p.s,p.s,p.s));
+      fx.crowd.setMatrixAt(i,M);
+    });
+    fx.crowd.instanceMatrix.needsUpdate=true;
+  }
   // 格扇窗光：夜档分相位呼吸（各殿微差），晨档微光，昼档熄
   const latGlow = lightMode==='night' ? .9+.18*Math.sin(t*1.1) : (lightMode==='dawn' ? .22 : 0);
   for(let i=0;i<LATTICE_GLOW.length;i++)
