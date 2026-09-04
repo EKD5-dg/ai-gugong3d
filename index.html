@@ -721,24 +721,26 @@ function hipRoofGeo(w,d,h,ridge=.58,curve=2.05,N=8){
     const zh=d/2*(1-s), xh=w/2+(rw-w/2)*s, y=h*Math.pow(s,curve);
     const lift=liftAt(s);
     const fl=1+.05*Math.pow(1-s,3);            // 角部外撇
-    const cx=xh*fl, cz=zh*fl, cy=y+lift;
-    const amp=.16*(1-s);                        // 瓦垄沟：檐深脊浅，放射垄线
-    const groove=(px,pz)=>{const th=Math.atan2(pz,px);return amp*(.55+.45*Math.sin(th*16));};
-    // 显式 12 点：前坡(角+2内点) / 右坡(角+2内点) / 后坡 / 左坡；角部带起翘，内点带垄沟
-    const P=(X,Z,liftOn)=>[X, y+(liftOn?lift:0)+groove(X,Z), Z];
-    const V=[
-      P(-cx,cz,1), P(-cx/3,cz,0), P(cx/3,cz,0), P(cx,cz,1),
-      P(cx,cz/3,0), P(cx,-cz/3,0),
-      P(cx,-cz,1), P(cx/3,-cz,0), P(-cx/3,-cz,0), P(-cx,-cz,1),
-      P(-cx,-cz/3,0), P(-cx,cz/3,0)
-    ];
-    V.forEach(v=>{ pos.push(v[0],v[1],v[2]); uv.push(v[0]/5,v[2]/5); });
+    const cx=xh*fl, cz=zh*fl;
+    const amp=.15*(1-s);                        // 瓦垄：檐深脊浅，每坡 7 道平行真垄
+    const corners=[[-cx,cz],[cx,cz],[cx,-cz],[-cx,-cz]];
+    for(let e2=0;e2<4;e2++){
+      const A=corners[e2], B=corners[(e2+1)%4];
+      for(let i3=0;i3<5;i3++){
+        const f=i3/5;
+        const px=A[0]+(B[0]-A[0])*f, pz=A[1]+(B[1]-A[1])*f;
+        const liftE=lift*Math.pow(Math.abs(Math.cos(f*Math.PI/2)),1.5);   // 起翘沿檐口向中段衰减
+        const disp=amp*(0.5+0.5*Math.sin(f*Math.PI*14));
+        pos.push(px, y+liftE+disp, pz);
+        uv.push(px/5,pz/5);
+      }
+    }
   };
   for(let k=0;k<=N;k++) ring(k/N);
-  const vi=(k,c)=>k*12+c;
+  const vi=(k,c)=>k*20+c;
   for(let k=0;k<N;k++){
-    for(let c=0;c<12;c++){
-      const a=vi(k,c), b=vi(k,(c+1)%12), a2=vi(k+1,c), b2=vi(k+1,(c+1)%12);
+    for(let c=0;c<20;c++){
+      const a=vi(k,c), b=vi(k,(c+1)%20), a2=vi(k+1,c), b2=vi(k+1,(c+1)%20);
       idx.push(a,b,b2, a,b2,a2);
     }
   }
@@ -1540,9 +1542,9 @@ for(let gx=-3;gx<=3;gx++) for(let gz=0;gz<5;gz++){
     {geo:new THREE.SphereGeometry(.14,6,5),m:new THREE.Matrix4().makeTranslation(0,1.32,0)}
   ]);
   const matPerson=new THREE.MeshStandardMaterial({color:0x2a3242,roughness:.9});
-  const zones=[[-430,-378,-45,45],[-290,-178,-56,56],[78,88,-26,26],[76,116,-54,-31],[76,116,31,54],[136,300,-56,-46],[136,300,46,56],[330,372,-40,40],[412,470,-40,40]];
+  const zones=[[-430,-378,-45,45],[-290,-178,-56,56],[76,97,31,54],[103,116,31,54],[76,97,-54,-31],[103,116,-54,-31],[136,300,-56,-46],[136,300,46,56],[330,372,-40,40],[412,464,-40,40]];
   // 禁落区：内金水河/乾清门城台/台基边坡——落点重生成
-  const rej=[[-62,62,-376,-348],[-30,30,86,114],[-48,-38,116,314],[38,48,116,314],[-28,28,116,126],[-28,28,-170,-158]];
+  const rej=[[-62,62,-376,-348],[-30,30,86,114],[-48,-38,116,314],[38,48,116,314],[-28,28,116,126],[-28,28,-170,-158],[30,110,96,104],[-110,-30,96,104],[-28,28,74,88]];
   const bad=(x,z)=>rej.some(r=>x>=r[0]&&x<=r[1]&&z>=r[2]&&z<=r[3]);
   const people=[]; let seed=99;
   const rnd=()=>{seed=(seed*48271)%2147483647;return seed/2147483647;};
@@ -1868,7 +1870,7 @@ function terrainH(x,z){
     const winM=std({color:0x14171d,emissive:0xffb46a,emissiveIntensity:0}); LATTICE_GLOW.push(winM);
     for(const sx2 of [-1,1]) for(const k2 of [-1,1]){
       const ww=new THREE.Mesh(new THREE.BoxGeometry(.2,1.2,1.8),winM);
-      ww.position.set(sx2*8.15,h+1.4,k2*3); g.add(ww);
+      ww.position.set(sx2*6.3,h+1.4,k2*3); g.add(ww);
     }
     g.userData={poi,world:'wall'};
     // 楼体碰撞：两翼各一盒，留出门洞走廊（沿墙方向可穿楼，门洞与视觉门位置对应）
@@ -2181,7 +2183,8 @@ const WORLDS={
     views:{'全景':{p:[430,330,660],t:[0,0,-30]},'俯瞰':{p:[.5,730,.5],t:[0,0,0]},
       '午门':{p:[0,24,-562],t:[0,22,-480]},'三大殿':{p:[30,38,-206],t:[0,24,-112]},
       '后三宫':{p:[0,30,92],t:[0,14,205]},'御花园':{p:[0,26,338],t:[0,10,390]},
-      '角楼':{p:[432,30,-540],t:[376,14,-480]},'殿内景':{p:[0,12.8,-124.5],t:[0,9.5,-103.5]}}},
+      '角楼':{p:[432,30,-540],t:[376,14,-480]},'殿内景':{p:[0,12.8,-124.5],t:[0,9.5,-103.5]},
+      '晨光金顶':{p:[2,84,592],t:[0,18,-80],light:'dawn'}}},
   wall:{label:'万里长城',group:gw,pois:POIS_W,slab:()=>fx.slabW,
     sub:'GREAT WALL · 3D DIGITAL TWIN',
     geo:'N 40.359° · E 116.021° · 北京 · 燕山山脉',
@@ -2500,7 +2503,9 @@ function rebuildViewButtons(){
     const b=document.createElement('button'); b.className='btn';
     const lbl=(LANG==='en'?(VIEW_EN[k]||k):k);
     b.innerHTML=`${lbl}<span class="k">${i+1}</span>`;
-    b.addEventListener('click',()=>{ poiLayer.classList.remove('dim'); const v=views[k]; flyTo(v.p,v.t,1900); });
+    b.addEventListener('click',()=>{ poiLayer.classList.remove('dim'); const v=views[k];
+      if(v.light) document.querySelector(`[data-light="${v.light}"]`).click();   // 绑定光照档（晨光金顶等）
+      flyTo(v.p,v.t,1900); });
     holder.appendChild(b);
   });
 }
@@ -2716,7 +2721,12 @@ function animate(){
   matWater.emissiveIntensity=wE; matWaterMoat.emissiveIntensity=wE;
   matWater.normalMap.offset.set(t*.018, t*.009);       // 水面缓流
   matWaterMoat.normalMap.offset.set(t*.012, t*.006);   // 护城河独立流向
-  if(fx.cubeCam && t-fx.cubeLast>1){ fx.cubeLast=t; fx.cubeCam.update(renderer,scene); }   // 每秒一捕水面反射
+  if(fx.cubeCam && t-fx.cubeLast>1){
+    fx.cubeLast=t;
+    matWater.visible=false; matWaterMoat.visible=false;   // 捕捉时隐藏水面自身，防自反馈
+    fx.cubeCam.update(renderer,scene);
+    matWater.visible=true; matWaterMoat.visible=true;
+  }   // 每秒一捕水面反射
   if(fx.shaftMat) fx.shaftMat.opacity=lightMode==='dawn'?.5:.12;                            // 晨光光柱
   if(fx.clouds) fx.clouds.forEach((c2,i)=>{ c2.position.x+=dt*(3+i*.6); if(c2.position.x>1500) c2.position.x=-1500; });
   if(fx.cloudShadows) fx.cloudShadows.forEach((p,i)=>{                    // 云影随云
