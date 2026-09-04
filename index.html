@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>紫禁城 · 万里长城 | 3D 数字全景</title>
+<!-- 数字孪生 · 程序化建模 · 本地 vendor 离线可用 -->
 <style>
   :root{
     --cyan:#3fe1ff; --gold:#e8c06a;
@@ -172,8 +173,8 @@
 </div>
 
 <div id="worldbar">
-  <button class="wbtn on" data-world="gugong">🏯 紫禁城</button>
-  <button class="wbtn" data-world="wall">🏔 万里长城</button>
+  <button class="wbtn on" data-world="gugong">紫禁城</button>
+  <button class="wbtn" data-world="wall">万里长城</button>
   <button class="wbtn" id="btn-lang">EN</button>
 </div>
 
@@ -217,8 +218,8 @@
   <button class="btn" id="btn-fps" title="F">第一人称</button>
   <div class="sep"></div>
   <button class="btn" id="btn-dir">目录</button>
-  <button class="btn" id="btn-shot" title="下载当前画面">📷</button>
-  <button class="btn" id="btn-fs" title="全屏">⛶</button>
+  <button class="btn" id="btn-shot" title="下载当前画面">截图</button>
+  <button class="btn" id="btn-fs" title="全屏">全屏</button>
 </div>
 
 <div id="dirpanel"></div>
@@ -608,11 +609,33 @@ const gw=new THREE.Group(); scene.add(gw); gw.visible=false; // 世界二：长�
 const fx={};
 
 const solidMats=new Set();
+const _roughCache={};
 function std(o){
   // 带 rep() 母图法线的材质自动挂 normalMap
   if(o.map&&o.map.userData&&o.map.userData.normal&&!o.normalMap){
     o.normalMap=o.map.userData.normal;
     o.normalScale=o.normalScale||new THREE.Vector2(.8,.8);
+  }
+  // 由母图亮度场反相自动生成 roughnessMap（缝糙面光、砖面细磨），零新纹理成本
+  if(o.map&&o.map.image&&!o.roughnessMap&&o.map.userData&&o.map.userData.normal){
+    const uid=o.map.uuid;
+    if(!_roughCache[uid]){
+      const src=o.map.image, w=src.width, h=src.height;
+      const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+      const g2=cv.getContext('2d'); g2.drawImage(src,0,0);
+      const im=g2.getImageData(0,0,w,h), px=im.data;
+      for(let i=0;i<px.length;i+=4){
+        const l=(px[i]*.3+px[i+1]*.59+px[i+2]*.11)/255;
+        const rv=Math.max(.55,Math.min(.98,1.06-l*.75))*255;   // 越亮(砖面)越粗糙→略降，越暗(缝)越糙
+        px[i]=px[i+1]=px[i+2]=rv;
+      }
+      g2.putImageData(im,0,0);
+      const rt=new THREE.CanvasTexture(cv);
+      rt.wrapS=rt.wrapT=THREE.RepeatWrapping;
+      _roughCache[uid]=rt;
+    }
+    o.roughnessMap=_roughCache[uid];
+    if(o.roughness===undefined) o.roughness=.82;
   }
   const m=new THREE.MeshStandardMaterial(o); solidMats.add(m); return m;
 }
@@ -743,11 +766,11 @@ function hipFrustumGeo(w1,d1,w2,d2,h,curve=1,N=8){
   g.setIndex(idx); g.computeVertexNormals();
   return g;
 }
-// 攒尖顶：曲线收分至宝顶
+// 攒尖顶：曲线收分至宝顶 + 檐口微起翘
 function pyramidGeo(w,d,h,curve=2.05,N=8){
   const pos=[],uv=[],idx=[];
   const ring=(s)=>{
-    const a=1-s, y=h*Math.pow(s,curve);
+    const a=1-s, y=h*Math.pow(s,curve)+.008*(w+d)*Math.pow(1-s,2.2);   // 檐环微起翘，与庑殿同语言
     pos.push(-w/2*a,y,d/2*a,  w/2*a,y,d/2*a,  w/2*a,y,-d/2*a,  -w/2*a,y,-d/2*a);
     uv.push(-w/10*a,d/10*a,  w/10*a,d/10*a,  w/10*a,-d/10*a,  -w/10*a,-d/10*a);
   };
@@ -884,19 +907,22 @@ function eaveCorners(parent,w,d,y){
 function balustrade(parent,w,d,y){
   const post=new THREE.BoxGeometry(.62,1.45,.62);
   const cap=new THREE.BoxGeometry(.85,.3,.85);
+  const finial=new THREE.SphereGeometry(.2,8,6);   // 望柱石榴头
   const per=[];
   const nx=Math.max(4,Math.round(w/4.2)),nz=Math.max(3,Math.round(d/4.2));
   for(let i=0;i<=nx;i++){const x=-w/2+i*w/nx; per.push([x,-d/2,0],[x,d/2,0]);}
   for(let j=1;j<nz;j++){const z=-d/2+j*d/nz; per.push([-w/2,z,Math.PI/2],[w/2,z,Math.PI/2]);}
   const im=new THREE.InstancedMesh(post,matMarble,per.length);
   const im2=new THREE.InstancedMesh(cap,matMarble,per.length);
+  const im3=new THREE.InstancedMesh(finial,matMarble,per.length);
   const M=new THREE.Matrix4(),M2=new THREE.Matrix4();
   per.forEach((p,i)=>{
     M.makeRotationY(p[2]); M.setPosition(p[0],y+.75,p[1]);
     M2.makeRotationY(p[2]); M2.setPosition(p[0],y+1.6,p[1]);
     im.setMatrixAt(i,M); im2.setMatrixAt(i,M2);
+    M.setPosition(p[0],y+1.88,p[1]); im3.setMatrixAt(i,M);
   });
-  parent.add(im,im2);
+  parent.add(im,im2,im3);
   box(parent,w+.6,.26,.4, 0,y+1.28,-d/2, matMarble,false);
   box(parent,w+.6,.26,.4, 0,y+1.28, d/2, matMarble,false);
   box(parent,.4,.26,d+.6, -w/2,y+1.28,0, matMarble,false);
@@ -933,6 +959,18 @@ function interior(g,o,topY){
   const zj3=new THREE.Mesh(new THREE.CylinderGeometry(1.9,2.6,1,24),matGoldDark); zj3.position.set(0,topY+bodyH-2.6,zjz); g.add(zj3);
   const zz=new THREE.Mesh(new THREE.CylinderGeometry(1.15,1.35,.28,20),matThroneGold);
   zz.position.set(0,topY+bodyH-3.35,zjz); g.add(zz);
+  // 藻井斗拱环：12 朵小拱围绕井心
+  {
+    const ring=new THREE.InstancedMesh(new THREE.BoxGeometry(.6,.22,.95),matGoldDark,12);
+    const Mz=new THREE.Matrix4(), Qz=new THREE.Quaternion(), Ez=new THREE.Euler(), Sz=new THREE.Vector3(1,1,1);
+    for(let k=0;k<12;k++){
+      const a=k/12*Math.PI*2;
+      Qz.setFromEuler(Ez.set(0,-a,0));
+      Mz.compose(new THREE.Vector3(Math.cos(a)*4.7, topY+bodyH-2.05, zjz+Math.sin(a)*4.7), Qz, Sz);
+      ring.setMatrixAt(k,Mz);
+    }
+    g.add(ring);
+  }
   // 内柱 + 柱础
   [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([sx,sz])=>{
     const c=new THREE.Mesh(new THREE.CylinderGeometry(.6,.68,bodyH-1,10),matColumn);
@@ -1308,6 +1346,10 @@ const matWater   =new THREE.MeshStandardMaterial({color:0x082c40,roughness:.25,m
   emissive:0x0a3b52,emissiveIntensity:.5,
   normalMap:texPave.userData.normal,normalScale:new THREE.Vector2(.38,.38)});
 matWater.normalMap.repeat.set(7,3);
+const matWaterMoat=new THREE.MeshStandardMaterial({color:0x082c40,roughness:.25,metalness:.2,
+  emissive:0x0a3b52,emissiveIntensity:.5,
+  normalMap:texPave.userData.normal.clone(),normalScale:new THREE.Vector2(.3,.3)});
+matWaterMoat.normalMap.needsUpdate=true; matWaterMoat.normalMap.repeat.set(.5,.5);   // 护城河 UV 是世界坐标，瓦片密度独立
 const matPlaza   =std({map:rep(texPlaza,6,20),roughness:.95});
 const matPlaza2  =std({map:rep(texPlaza,7,9),roughness:.9,color:0xd8e4f4});
 {
@@ -1319,7 +1361,7 @@ const matPlaza2  =std({map:rep(texPlaza,7,9),roughness:.9,color:0xd8e4f4});
   const land=new THREE.Mesh(new THREE.ShapeGeometry(roundedShape(748,956,20),8),matLand);
   land.geometry.rotateX(-Math.PI/2); land.position.y=.1; city.add(land);
   const moatS=roundedShape(872,1080,48); moatS.holes.push(roundedPath(new THREE.Path(),756,964,24));
-  const moat=new THREE.Mesh(new THREE.ShapeGeometry(moatS,10),matWater);
+  const moat=new THREE.Mesh(new THREE.ShapeGeometry(moatS,10),matWaterMoat);
   moat.geometry.rotateX(-Math.PI/2); moat.position.y=.14; city.add(moat); edged(moat);
   // 庭院功能分区：色块 + 细描边（与地台描边语言统一）
   const zoneLine=new THREE.LineBasicMaterial({color:0x2a9cc4,transparent:true,opacity:.35});
@@ -1571,6 +1613,7 @@ function terrainH(x,z){
   tgeo.computeVertexNormals();
   const terrain=new THREE.Mesh(tgeo,new THREE.MeshStandardMaterial({vertexColors:true,roughness:1,
     emissive:0x10151d,emissiveIntensity:.75}));
+  fx.terrainMat=terrain.material;
   gw.add(terrain);
   // 山坡散树（双实例化：树干+皱冠，两处 draw call，随机姿态与色相）
   {
@@ -1883,15 +1926,31 @@ function terrainH(x,z){
   const haloS=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(haloC),
     transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,toneMapped:false,fog:false}));
   haloS.scale.set(340,340,1); haloS.position.copy(moon.position); scene.add(haloS);
+  // 云 billboard：昼/晨可见，缓漂
+  const cloudC=document.createElement('canvas'); cloudC.width=256; cloudC.height=128;
+  { const cg=cloudC.getContext('2d');
+    const puff=(x,y,r,a)=>{const gr=cg.createRadialGradient(x,y,2,x,y,r);
+      gr.addColorStop(0,`rgba(255,255,255,${a})`);gr.addColorStop(1,'rgba(255,255,255,0)');
+      cg.fillStyle=gr;cg.beginPath();cg.arc(x,y,r,0,7);cg.fill();};
+    puff(80,70,52,.55); puff(128,56,62,.65); puff(180,72,48,.5); puff(112,86,58,.4);
+  }
+  fx.clouds=[];
+  for(let k=0;k<4;k++){
+    const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cloudC),
+      transparent:true,opacity:.3,depthWrite:false,fog:false,toneMapped:false}));
+    sp.scale.set(560+k*90,236+k*36,1);
+    sp.position.set(-900+k*620, 960+k*70, -500+k*330);
+    fx.clouds.push(sp); scene.add(sp);
+  }
 }
 
 /* ═══════════ POI 数据（两套世界） ═══════════ */
 const POIS_G=[
  {name:'午门',en:'MERIDIAN GATE',year:'明永乐十八年 · 1420',pos:[0,42,-480],view:{p:[52,14,-594],t:[-4,22,-482]},
   desc:'紫禁城正门。居中向阳，位当子午，故名午门。城台上五凤楼巍然，明清颁朔、献俘大典在此举行，凯旋将士亦于此受俘。'},
- {name:'内金水桥',en:'GOLDEN WATER BRIDGES',year:'明代 · 内金水河',pos:[0,11,-362],view:{p:[0,26,-428],t:[0,6,-362]},
+ {name:'内金水桥',en:'GOLDEN WATER BRIDGES',year:'明代 · 内金水河',pos:[0,11,-362],view:{p:[-38,14,-420],t:[4,4,-364]},
   desc:'跨内金水河的五座汉白玉石桥，中为御路桥，两侧依次为王公桥、品级桥。民间有"暗合五德"之说。每一块栏板望柱均可放大细看。'},
- {name:'太和门',en:'GATE OF SUPREME HARMONY',year:'明永乐十八年 · 1420',pos:[0,32,-300],view:{p:[0,24,-368],t:[0,20,-300]},
+ {name:'太和门',en:'GATE OF SUPREME HARMONY',year:'明永乐十八年 · 1420',pos:[0,32,-300],view:{p:[-44,12,-360],t:[4,16,-302]},
   desc:'外朝正门，明代"御门听政"之所。门前广场开阔数万平，白石栏板如雪，曾是明代常朝与重大典礼的仪仗之所。'},
  {name:'太和殿',en:'HALL OF SUPREME HARMONY',year:'1420 始建 · 1695 现存',pos:[0,52,-115],view:{p:[46,30,-236],t:[4,30,-116]},
   desc:'俗称金銮殿，现存规模最大的木结构大殿。重檐庑殿顶、檐角列脊兽（艺术化示意，模型以鸱吻示意；文献中"十瑞兽"为神话计数）。殿内金砖墁地、蟠龙藻井之下设髹金雕龙宝座，上悬"建极绥猷"匾（"正大光明"在乾清宫）——点击下方按钮可步入殿内。',inner:{p:[0,12.8,-124.5],t:[0,9.5,-103.5]}},
@@ -1899,19 +1958,19 @@ const POIS_G=[
   desc:'三大殿之一，平面呈正方形，单檐四角攒尖顶，上置鎏金宝顶。皇帝赴太和殿大典前在此小憩、演习礼仪。'},
  {name:'保和殿',en:'HALL OF PRESERVING HARMONY',year:'明永乐十八年 · 1420',pos:[0,44,25],view:{p:[0,38,-44],t:[0,30,25]},
   desc:'三大殿之一，重檐大殿（屋顶形制为艺术化示意）。清代殿试自乾隆五十四年起在此举行；除夕、正月十五赐宴外藩王公亦于此殿。'},
- {name:'乾清门',en:'GATE OF HEAVENLY PURITY',year:'明代 · 内廷正门',pos:[0,26,100],view:{p:[0,28,36],t:[0,16,100]},
+ {name:'乾清门',en:'GATE OF HEAVENLY PURITY',year:'明代 · 内廷正门',pos:[0,26,100],view:{p:[40,14,44],t:[-4,14,102]},
   desc:'内廷正门，门前金狮鎏金、琉璃影壁映辉。清代康熙帝御门听政于此，军机值房列于两侧，为国事枢要之地。'},
  {name:'乾清宫',en:'PALACE OF HEAVENLY PURITY',year:'明永乐十八年 · 1420',pos:[0,40,165],view:{p:[0,30,100],t:[0,26,165]},
   desc:'内廷正殿，明清皇帝寝宫与日常理政之所。殿内宝座上方即顺治御笔"正大光明"匾，雍正后秘密立储匣藏于匾后——可点击进入内景细看。',inner:{p:[0,11.6,156.5],t:[0,8.5,171.5]}},
- {name:'交泰殿',en:'HALL OF UNION',year:'明永乐十八年 · 1420',pos:[0,40,215],view:{p:[0,28,170],t:[0,24,215]},
+ {name:'交泰殿',en:'HALL OF UNION',year:'明永乐十八年 · 1420',pos:[0,40,215],view:{p:[-30,22,152],t:[2,20,216]},
   desc:'后三宫之一，取《易经》"天地交泰"之意。皇后千秋节受贺于此；清代二十五方皇帝宝玺珍藏殿中，铜壶滴漏与大自鸣钟分立两侧。'},
- {name:'坤宁宫',en:'PALACE OF EARTHLY TRANQUILITY',year:'明永乐十八年 · 1420',pos:[0,36,265],view:{p:[0,28,218],t:[0,22,265]},
+ {name:'坤宁宫',en:'PALACE OF EARTHLY TRANQUILITY',year:'明永乐十八年 · 1420',pos:[0,36,265],view:{p:[34,18,202],t:[-4,16,266]},
   desc:'明代皇后寝宫，取"地宁"之义。清代仿盛京旧制改为萨满祭祀之所，东暖阁设为大婚洞房。据载康熙、同治、光绪帝婚礼均曾以此为洞房。'},
- {name:'御花园 · 钦安殿',en:'IMPERIAL GARDEN',year:'明永乐十八年 · 1420',pos:[0,26,392],view:{p:[0,36,326],t:[0,14,392]},
+ {name:'御花园 · 钦安殿',en:'IMPERIAL GARDEN',year:'明永乐十八年 · 1420',pos:[0,26,392],view:{p:[-36,20,330],t:[4,10,394]},
   desc:'中轴北端宫廷园林，古柏藤萝、亭台奇石错落。钦安殿居中供玄天上帝，堆秀山御景亭为重阳登高之处，连理柏见证六百年风雨。'},
  {name:'神武门',en:'GATE OF DIVINE PROWESS',year:'明永乐十八年 · 1420',pos:[0,38,480],view:{p:[-42,16,576],t:[2,20,482]},
   desc:'紫禁城北门，旧设钟鼓晨昏报时。1925 年故宫博物院成立时于门上悬挂"故宫博物院"匾额，今为观众参观出口，门外即是景山。'},
- {name:'角楼',en:'CORNER TOWER',year:'明永乐十八年 · 1420',pos:[376,32,-480],view:{p:[498,48,-596],t:[376,16,-480]},
+ {name:'角楼',en:'CORNER TOWER',year:'明永乐十八年 · 1420',pos:[376,32,-480],view:{p:[492,16,-592],t:[378,20,-482]},
   desc:'城墙四隅各有一座角楼，三重檐、民间称"九梁十八柱七十二条脊"的精巧木构（不同计数口径有出入，模型为艺术化示意），轮廓如亭如阁，是紫禁城最上镜的标志之一。'},
  {name:'檐角斗拱',en:'DOUGONG CLOSE-UP',year:'重檐庑殿 · 檐角',pos:[26,31,-126],view:{p:[44,32,-100],t:[26,30,-126]},
   desc:'太和殿上层檐角特写：垂脊列脊兽（模型以鸱吻示意，艺术化数字示意非测绘复原），双层斗拱出跳承托檐口，飞檐翘角指天。琉璃瓦垄沿举折曲线铺展，檐下彩画枋层层出挑。'},
@@ -2110,6 +2169,13 @@ function applyLights(name){
   bloom.strength=L.bloom; renderer.toneMappingExposure=L.expo;
   const goldI = name==='night' ? .5 : (name==='dawn' ? .15 : 0);   // 金顶夜色回归：夜档琉璃自发光
   matGold.emissiveIntensity=goldI; matGoldAmber.emissiveIntensity=goldI; matGoldG.emissiveIntensity=goldI*.6;
+  fx.clouds.forEach(c2=>c2.material.opacity = name==='day'?.5:(name==='dawn'?.38:.1));   // 云分档
+  if(fx.terrainMat) fx.terrainMat.emissiveIntensity = name==='day' ? 0 : .75;            // 昼间关地形自发光
+  const eo = name==='day' ? .16 : (name==='dawn' ? .3 : .42);                            // 描边昼间衰减
+  edgeMat.opacity=eo; edgeMatG.opacity=eo*.95;
+  const plazaE = name==='day' ? .5 : (name==='dawn' ? .12 : 0);                          // 广场昼间天光补偿
+  matPlaza.emissive.set(0x8fa3bd); matPlaza2.emissive.set(0x9fb2c8);
+  matPlaza.emissiveIntensity=plazaE; matPlaza2.emissiveIntensity=plazaE;
   document.querySelectorAll('[data-light]').forEach(b=>b.classList.toggle('on',b.dataset.light===name));
   lightMode=name;
 }
@@ -2141,7 +2207,7 @@ function applyLang(l){
   document.getElementById('tip').innerHTML=UI[l].tip;
   document.getElementById('acc-note').textContent=UI[l].note;
   document.getElementById('btn-lang').textContent=(l==='zh'?'EN':'中');
-  const WB={gugong:['🏯 紫禁城','🏯 FORBIDDEN CITY'],wall:['🏔 万里长城','🏔 GREAT WALL']};
+  const WB={gugong:['紫禁城','FORBIDDEN CITY'],wall:['万里长城','GREAT WALL']};
   document.querySelectorAll('.wbtn[data-world]').forEach(b=>{ b.textContent=WB[b.dataset.world][l==='en'?1:0]; });
   rebuildViewButtons();
   document.getElementById('kiosk-exit').textContent=(l==='en'?'EXIT ✕':'退出展陈 ✕');
@@ -2518,14 +2584,18 @@ function animate(){
     });
   }
   if(fx.axis1&&activeWorld==='gugong'){
-    fx.axis1.material.opacity=.1+.05*Math.sin(t*1.6);
-    fx.axis2.material.opacity=.22+.1*Math.sin(t*1.6);
+    const axOp=lightMode==='day'?.35:1;   // 昼间中轴光带减弱
+    fx.axis1.material.opacity=(.1+.05*Math.sin(t*1.6))*axOp;
+    fx.axis2.material.opacity=(.22+.1*Math.sin(t*1.6))*axOp;
   }
   matWater.emissiveIntensity=.42+.18*Math.sin(t*1.2); // 水光呼吸
   matWater.normalMap.offset.set(t*.018, t*.009);       // 水面缓流
-  // 格扇窗光：夜档呼吸，晨档微光，昼档熄
+  matWaterMoat.normalMap.offset.set(t*.012, t*.006);   // 护城河独立流向
+  if(fx.clouds) fx.clouds.forEach((c2,i)=>{ c2.position.x+=dt*(3+i*.6); if(c2.position.x>1500) c2.position.x=-1500; });
+  // 格扇窗光：夜档分相位呼吸（各殿微差），晨档微光，昼档熄
   const latGlow = lightMode==='night' ? .9+.18*Math.sin(t*1.1) : (lightMode==='dawn' ? .22 : 0);
-  for(let i=0;i<LATTICE_GLOW.length;i++) LATTICE_GLOW[i].emissiveIntensity=latGlow;
+  for(let i=0;i<LATTICE_GLOW.length;i++)
+    LATTICE_GLOW[i].emissiveIntensity=latGlow*(.78+.22*Math.sin(t*1.1+i*1.73));
   for(let i=0;i<WIND.length;i++) WIND[i].uniforms.uT.value=t;            // 树冠风摆
   GW.smoke.forEach((puffs,bi)=>puffs.forEach((sp,k)=>{                    // 狼烟缓升渐隐
     const ph=((t*.14)+k*.167+bi*.37)%1;
