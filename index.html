@@ -648,6 +648,14 @@ const matDoorStud= std({map:texDoorStud,roughness:.75});
 const matLeaf    = std({color:0x14523d,roughness:.92});
 const matTreeCyp = std({color:0x0e3d2c,roughness:.95});   // 古柏共享
 const matTreeLat = std({color:0x1b5a40,roughness:.95});   // 宫槐共享
+// 树冠风摆：顶点着色器注入，三类树叶共享时间 uniform
+const WIND=[];
+[matTreeCyp,matTreeLat,matGWTree].forEach(m=>{
+  m.onBeforeCompile=sh=>{ sh.uniforms.uT={value:0};
+    sh.vertexShader='uniform float uT;\n'+sh.vertexShader.replace('#include <begin_vertex>',
+      '#include <begin_vertex>\ntransformed.x+=sin(uT*1.3+transformed.y*.55+transformed.z*.7)*.1*smoothstep(0.,3.,transformed.y);');
+    WIND.push(sh); };
+});
 const matTrunk   = std({color:0x243328,roughness:.95});
 const matHill    = std({color:0x0e2f26,roughness:.95});
 const matCaihua  = std({color:0x143a46,roughness:.75});   // 彩画枋
@@ -788,6 +796,16 @@ function hipRidges(parent,w,d,h,ridge=.55,y0=0,curve=2.05){
       items.push({geo:new THREE.CylinderGeometry(r1,r0,len*1.04,6),
         m:new THREE.Matrix4().compose(a.clone().lerp(b,.5),q.clone(),new THREE.Vector3(1,1,1))});
       a=b;
+    }
+  }
+  // 脊兽队列：每条戗脊上段 5 只（仙人对兽列，艺术化示意；随起翘曲线随动）
+  for(const sx of [1,-1]) for(const sz of [1,-1]){
+    for(const s of [.3,.42,.54,.66,.78]){
+      const p=pt(sx,sz,s);
+      items.push({geo:new THREE.BoxGeometry(.3,.42,.26),
+        m:new THREE.Matrix4().makeTranslation(p.x,p.y+.3,p.z)});
+      items.push({geo:new THREE.SphereGeometry(.13,6,5),
+        m:new THREE.Matrix4().makeTranslation(p.x,p.y+.6,p.z)});
     }
   }
   const merged=new THREE.Mesh(mergeGeo(items),matGoldDark); merged.castShadow=true; parent.add(merged);
@@ -1038,11 +1056,24 @@ function palace(o){
     eaveCorners(g,rw,rd,rt+.2);
     const rl=rw*.55;
     box(g,rl,1.2,1.2, 0,rt+roofH+.35,0, matGoldDark,false);
-    // 鸱吻
-    box(g,1.7,2.8,1.7,  rl/2+.6,rt+roofH+.8,0, matGoldDark,false);
-    box(g,1.7,2.8,1.7, -rl/2-.6,rt+roofH+.8,0, matGoldDark,false);
-    box(g,.8,.9,.9,  rl/2+.6,rt+roofH+2.4,0, matGoldDark,false);
-    box(g,.8,.9,.9, -rl/2-.6,rt+roofH+2.4,0, matGoldDark,false);
+    // 鸱吻（弯钩三段：竖板 + 顶钩内咬 + 尾刺上翘）
+    for(const sgn of [1,-1]){
+      const bx=sgn*(rl/2+.55);
+      box(g,1.1,2.6,1.0, bx,rt+roofH+.9,0, matGoldDark,false);
+      box(g,1.0,.75,1.5, bx-sgn*.45,rt+roofH+2.15,0, matGoldDark,false);
+      box(g,.5,1.5,.8,  bx+sgn*.35,rt+roofH+2.5,0, matGoldDark,false);
+    }
+    if(o.shan){   // 歇山山花：正脊两端三角梅花板（保和殿/文华/武英）
+      const gw2=rd*.3, gh=roofH*.5;
+      const shp=new THREE.Shape(); shp.moveTo(-gw2,0); shp.lineTo(gw2,0); shp.lineTo(0,gh); shp.closePath();
+      for(const sgn of [1,-1]){
+        const gm=new THREE.Mesh(new THREE.ShapeGeometry(shp),matCaihua);
+        gm.rotation.y=sgn*Math.PI/2;
+        gm.position.set(sgn*rw*.3, rt+roofH*.42, 0);
+        g.add(gm);
+        box(g,.22,gh*1.35,gw2*2.3, sgn*rw*.3, rt+roofH*.42+gh*.5, 0, matGoldDark,false);  // 搏风板
+      }
+    }
   }
   // 殿身碰撞：按殿身外轮廓注册；组内局部坐标的殿宇（城楼/山亭）传 collide:false 关闭
   if(o.collide!==false&&w>=10&&d>=10) addCollider(x,z,w/2+1.2,d/2+1.2);
@@ -1372,7 +1403,7 @@ const matPlaza2  =std({map:rep(texPlaza,7,9),roughness:.9,color:0xd8e4f4});
     interior:true,throne:true,plaque:true,doorW:10,doorH:7.6,dougong:true,bm:matWallBig});
   td.userData.poi=3; td.userData.world='gugong'; city.add(td);
   const zh=palace({w:28,d:28,bodyH:9,tiers:0,pyr:true,roofH:11,y:9,z:-45,dougong:true}); zh.userData.poi=4; zh.userData.world='gugong'; city.add(zh);
-  const bh=palace({w:54,d:26,bodyH:11,tiers:0,double:true,roofH:9.5,y:9,z:25,dougong:true,bays:9,bm:matWall}); bh.userData.poi=5; bh.userData.world='gugong'; city.add(bh);
+  const bh=palace({w:54,d:26,bodyH:11,tiers:0,double:true,roofH:9.5,y:9,z:25,dougong:true,bays:9,bm:matWall,shan:true}); bh.userData.poi=5; bh.userData.world='gugong'; city.add(bh);
   // 铜缸陈设 + 香炉
   bronzeVat(-58,9,-152); bronzeVat(58,9,-152); bronzeVat(-58,9,18); bronzeVat(58,9,18);
   censer(-30,9,-143); censer(30,9,-143);
@@ -1422,8 +1453,8 @@ city.add(gate({x:-376,z:-150,w:48,d:20,h:10,rot:Math.PI/2,towerH:5}));
     vi++;
   }
 });
-const whd=palace({w:56,d:26,bodyH:9,tiers:1,roofH:6.5,x: 245,z:-235,dougong:true}); whd.userData={poi:16,world:'gugong'}; city.add(whd); compound( 245,-235,56,26);
-const wyd=palace({w:56,d:26,bodyH:9,tiers:1,roofH:6.5,x:-245,z:-235,dougong:true}); wyd.userData={poi:17,world:'gugong'}; city.add(wyd); compound(-245,-235,56,26);
+const whd=palace({w:56,d:26,bodyH:9,tiers:1,roofH:6.5,x: 245,z:-235,dougong:true,shan:true}); whd.userData={poi:16,world:'gugong'}; city.add(whd); compound( 245,-235,56,26);
+const wyd=palace({w:56,d:26,bodyH:9,tiers:1,roofH:6.5,x:-245,z:-235,dougong:true,shan:true}); wyd.userData={poi:17,world:'gugong'}; city.add(wyd); compound(-245,-235,56,26);
 // —— 树木（御花园松柏 / 庭院阔叶）
 for(let gx=-3;gx<=3;gx++) for(let gz=0;gz<5;gz++){
   const jx=(Math.sin(gx*12.9+gz*7.7)*.5+.5)*8-4, jz=(Math.cos(gx*5.3+gz*3.1)*.5+.5)*8-4;
@@ -1485,7 +1516,11 @@ function terrainH(x,z){
   const f=Math.min(fx,fz);
   return h*f-4.5*(1-f);
 }
-  const GW={path:[],towers:[],beacons:[],beaconGroups:[]};
+  const GW={path:[],towers:[],beacons:[],beaconGroups:[],smoke:[]};
+  const smokeTex=(()=>{const c=document.createElement('canvas');c.width=c.height=64;
+    const g=c.getContext('2d');const gr=g.createRadialGradient(32,32,4,32,32,32);
+    gr.addColorStop(0,'rgba(178,178,188,.5)');gr.addColorStop(1,'rgba(178,178,188,0)');
+    g.fillStyle=gr;g.fillRect(0,0,64,64);return new THREE.CanvasTexture(c);})();
 {
   // ── 山体地形（顶点色 + 低多边形科技风）──
   const sx=340,sz=240,rw=2600,rd=1700;
@@ -1793,6 +1828,13 @@ function terrainH(x,z){
       new THREE.MeshBasicMaterial({color:0xff8c3a,toneMapped:false}));
     glow.position.y=17; g.add(glow);
     const li=new THREE.PointLight(0xff8c3a,2.2,90,1.2); li.position.y=19; g.add(li);
+    // 狼烟柱：6 张缓升渐隐 billboard（昼烟夜火各时段可见）
+    const puffs=[];
+    for(let k=0;k<6;k++){
+      const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:smokeTex,transparent:true,opacity:0,depthWrite:false}));
+      sp.position.set((k%3-1)*.9,16.5+k*2,(k>2?1:-1)*.7); sp.scale.setScalar(3+k); g.add(sp); puffs.push(sp);
+    }
+    GW.smoke.push(puffs);
     g.userData={poi:8,world:'wall'};
     // 烽火台碰撞：两翼留走廊，不堵死马道
     const bA=P[Math.max(0,idx-2)], bB=P[Math.min(n-1,idx+2)];
@@ -2451,7 +2493,7 @@ function animate(){
     if(k>=1){ const cb=fly.onDone; fly=null; if(cb)cb(); }
   }
   if(tourOn&&tourPending===false){
-    tourT+=dt/60*tourDir;
+    tourT+=dt/60*tourDir*(.45+.85*Math.pow(Math.sin(tourT*Math.PI*4),2));   // 重点段自动减速驻留
     if(tourT>=1){tourT=1;tourDir=-1;} if(tourT<=0){tourT=0;tourDir=1;}
     const tc=tourCurves[activeWorld], tl=tourLooks[activeWorld];
     camera.position.copy(tc.getPointAt(tourT));
@@ -2484,6 +2526,13 @@ function animate(){
   // 格扇窗光：夜档呼吸，晨档微光，昼档熄
   const latGlow = lightMode==='night' ? .9+.18*Math.sin(t*1.1) : (lightMode==='dawn' ? .22 : 0);
   for(let i=0;i<LATTICE_GLOW.length;i++) LATTICE_GLOW[i].emissiveIntensity=latGlow;
+  for(let i=0;i<WIND.length;i++) WIND[i].uniforms.uT.value=t;            // 树冠风摆
+  GW.smoke.forEach((puffs,bi)=>puffs.forEach((sp,k)=>{                    // 狼烟缓升渐隐
+    const ph=((t*.14)+k*.167+bi*.37)%1;
+    sp.position.y=16.5+ph*13;
+    sp.material.opacity=.3*(1-ph)*(lightMode==='day'?1:.55);
+    sp.scale.setScalar(2.6+ph*7);
+  }));
   // 烽火台狼烟火光
   GW.beacons.forEach((b,i)=>{
     const f=.85+.3*Math.sin(t*7+i*2)+.12*Math.sin(t*23+i);
