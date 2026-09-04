@@ -1427,9 +1427,12 @@ const matPlaza2  =std({map:rep(texPlaza,7,9),roughness:.9,color:0xd8e4f4});
   mkZone(300,170,0,565,matPlaza);
   const river=new THREE.Mesh(new THREE.PlaneGeometry(214,22),matWater);
   river.rotation.x=-Math.PI/2; river.position.set(0,.3,-362); city.add(river);
-  const yuluStrip=new THREE.Mesh(new THREE.PlaneGeometry(6.5,380),
+  const yuluStrip=new THREE.Mesh(new THREE.PlaneGeometry(6.5,108),
     new THREE.MeshStandardMaterial({color:0x0d1524,roughness:.55}));
-  yuluStrip.rotation.x=-Math.PI/2; yuluStrip.position.set(0,.34,-55); city.add(yuluStrip);   // 御路暗石条（丹陛轴线）
+  yuluStrip.rotation.x=-Math.PI/2; yuluStrip.position.set(0,.34,-300); city.add(yuluStrip);   // 御路北段（桥-乾清门）
+  const yuluStrip2=new THREE.Mesh(new THREE.PlaneGeometry(6.5,84),
+    new THREE.MeshStandardMaterial({color:0x0d1524,roughness:.55}));
+  yuluStrip2.rotation.x=-Math.PI/2; yuluStrip2.position.set(0,.34,-414); city.add(yuluStrip2); // 御路南段（午门城台根收边）
   box(city,214,1.2,3, 0,.55,-374, matMarble);
   box(city,214,1.2,3, 0,.55,-350, matMarble);
   const grid=new THREE.GridHelper(3400,68,0x0c2c3e,0x081b28);
@@ -1642,7 +1645,11 @@ function initAmbience(){
     g.gain.setValueAtTime(g0,C.currentTime); g.gain.exponentialRampToValueAtTime(.0001,C.currentTime+2.4);
     o.start(); o.stop(C.currentTime+2.5); };
 }
-addEventListener('pointerdown',()=>{ try{ initAmbience(); AMBIENCE.ctx.resume(); }catch(e){} });
+addEventListener('pointerdown',()=>{ try{ initAmbience(); AMBIENCE.ctx.resume();
+  if(!AMBIENCE.hinted){ AMBIENCE.hinted=true;
+    const an=document.getElementById('actname'); an.textContent='音景已开启 · 「音景」按钮可静音';
+    an.classList.add('show'); clearTimeout(an._t); an._t=setTimeout(()=>an.classList.remove('show'),3000); }
+  }catch(e){} });
 
 // —— 音景结束 ——
 // —— 午门外华表
@@ -2276,7 +2283,7 @@ const WORLDS={
       '午门':{p:[0,24,-562],t:[0,22,-480]},'三大殿':{p:[30,38,-206],t:[0,24,-112]},
       '后三宫':{p:[0,30,92],t:[0,14,205]},'御花园':{p:[0,26,338],t:[0,10,390]},
       '角楼':{p:[432,30,-540],t:[376,14,-480]},'殿内景':{p:[0,12.8,-124.5],t:[0,9.5,-103.5]},
-      '晨光金顶':{p:[2,84,592],t:[0,18,-80],light:'dawn'}}},
+      '晨光金顶':{p:[2,84,592],t:[0,18,-80],light:'dawn',golden:true}}},
   wall:{label:'万里长城',group:gw,pois:POIS_W,slab:()=>fx.slabW,
     sub:'GREAT WALL · 3D DIGITAL TWIN',
     geo:'N 40.359° · E 116.021° · 北京 · 燕山山脉',
@@ -2467,6 +2474,8 @@ async function kioskLoop(my){
     }
     if(!alive())return;
     setWorld(activeWorld==='gugong'?'wall':'gugong');
+    if(activeWorld==='wall'){ applyLights('night');   // 第四幕：长城夜巡（烽火+亮窗）
+      openPOI(8); await wait(5200); }                 // 压轴：烽火台火盆特写
     if(activeWorld==='wall') applyLights('night');   // 第四幕：长城夜巡（烽火+亮窗）
     await wait(5200);
   }
@@ -2614,6 +2623,8 @@ function rebuildViewButtons(){
     b.addEventListener('click',()=>{ poiLayer.classList.remove('dim'); const v=views[k];
       if(v.light) document.querySelector(`[data-light="${v.light}"]`).click();   // 绑定光照档（晨光金顶等）
       if(v.light==='dawn'&&fx.sweep) fx.sweepOff=((.60-(performance.now()/1000)*.1)%1.6+1.6)%1.6;   // 扫光对时：落定即峰值
+      if(v.golden){ fx.goldenDrift={until:performance.now()+6000,
+        dir:new THREE.Vector3().subVectors(new THREE.Vector3(...v.t),new THREE.Vector3(...v.p)).normalize()}; }   // 驻留缓推
       const an=document.getElementById('actname'); an.textContent=k+' · '+WORLDS[activeWorld].label;
       an.classList.add('show'); clearTimeout(an._t); an._t=setTimeout(()=>an.classList.remove('show'),2600);
       flyTo(v.p,v.t, lightMode==="night"?2600:(lightMode==="dawn"?3200:2200)); });
@@ -2840,6 +2851,11 @@ function animate(){
   }   // 每秒一捕水面反射
   if(fx.shaftMat) fx.shaftMat.opacity=lightMode==='dawn'?.5:.12;                            // 晨光光柱
   if(fx.dust){ fx.dust.material.opacity=lightMode==='dawn'?.8:.15; fx.dust.rotation.y=t*.02; }  // 殿内微尘
+  if(fx.goldenDrift){                                                        // 晨光金顶驻留缓推
+    if(performance.now()<fx.goldenDrift.until&&!fly&&!fps.on)
+      camera.position.addScaledVector(fx.goldenDrift.dir,dt*.2);
+    else if(performance.now()>=fx.goldenDrift.until) fx.goldenDrift=null;
+  }
   if(fx.clouds) fx.clouds.forEach((c2,i)=>{ c2.position.x+=dt*(3+i*.6); if(c2.position.x>1500) c2.position.x=-1500; });
   if(fx.cloudShadows) fx.cloudShadows.forEach((p,i)=>{                    // 云影随云
     p.position.x=fx.clouds[i].position.x*.92;
