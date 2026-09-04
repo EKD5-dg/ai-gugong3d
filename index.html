@@ -1494,10 +1494,20 @@ const matPlaza2  =std({map:rep(texPlaza,7,9),roughness:.9,color:0xd8e4f4});
     const shaftMat=new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(shaftC),transparent:true,
       opacity:0,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide,toneMapped:false});
     fx.shaftMat=shaftMat;
+    // 微尘：40 粒暖尘（Points），体积感
+    const dn=40, dp=new Float32Array(dn*3);
+    for(let k2=0;k2<dn;k2++){ dp[k2*3]=(Math.random()-.5)*44; dp[k2*3+1]=.6+Math.random()*9.5; dp[k2*3+2]=17-(Math.random()*10); }
+    const dustG=new THREE.BufferGeometry(); dustG.setAttribute('position',new THREE.BufferAttribute(dp,3));
+    const dust=new THREE.Points(dustG,new THREE.PointsMaterial({color:0xffe0b0,size:.18,transparent:true,
+      opacity:0,blending:THREE.AdditiveBlending,depthWrite:false,toneMapped:false}));
+    fx.dust=dust; td.add(dust);
     for(let k=0;k<4;k++){
       const pl=new THREE.Mesh(new THREE.PlaneGeometry(2.4,11),shaftMat);
       pl.position.set(-18+k*12, 5.6, -15); pl.rotation.y=.22;
       td.add(pl);
+      const pl2=new THREE.Mesh(new THREE.PlaneGeometry(1.1,11.5),shaftMat);   // 错位内层
+      pl2.position.set(-18+k*12+.7, 5.4, -14.3); pl2.rotation.y=.22;
+      td.add(pl2);
     }
   }
 }
@@ -1601,15 +1611,16 @@ function initAmbience(){
   const wind=C.createBufferSource(); wind.buffer=buf; wind.loop=true;
   const lp=C.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=420;
   const wg=C.createGain(); wg.gain.value=.5;
+  AMBIENCE.windLP=lp;
   wind.connect(lp).connect(wg).connect(master); wind.start();
   const murmur=C.createBufferSource(); murmur.buffer=buf; murmur.loop=true;
   const bp=C.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=900; bp.Q.value=.6;
   const mg=C.createGain(); mg.gain.value=0;
   murmur.connect(bp).connect(mg).connect(master); murmur.start();
   AMBIENCE.murmur=mg;
-  AMBIENCE.bell=()=>{ const o=C.createOscillator(), g=C.createGain();
+  AMBIENCE.bell=(g0=.16)=>{ const o=C.createOscillator(), g=C.createGain();
     o.frequency.value=523; o.connect(g).connect(master);
-    g.gain.setValueAtTime(.16,C.currentTime); g.gain.exponentialRampToValueAtTime(.0001,C.currentTime+2.4);
+    g.gain.setValueAtTime(g0,C.currentTime); g.gain.exponentialRampToValueAtTime(.0001,C.currentTime+2.4);
     o.start(); o.stop(C.currentTime+2.5); };
 }
 addEventListener('pointerdown',()=>{ try{ initAmbience(); AMBIENCE.ctx.resume(); }catch(e){} });
@@ -1859,18 +1870,21 @@ function terrainH(x,z){
     g.setIndex(idx); g.computeVertexNormals();
     gw.add(new THREE.Mesh(g,matGWDeck));
   }
+  const keep=SI.map((p,i)=>p.x<=1000?i:-1).filter(i=>i>=0);   // 断崖收口：x>1000 不再铺装
+  const SIp=keep.map(i=>SI[i]), PRIp=keep.map(i=>PRI[i]), THIp=keep.map(i=>THI[i]);
   for(const side of [1,-1]){                        // 两侧女墙
-    const parS=SI.map((p,i)=>new THREE.Vector3(
-      p.x+PRI[i].x*4.5*side, p.y+THI[i]-.25, p.z+PRI[i].z*4.5*side));
-    ribbon(parS,PRI,SI.map(()=>1.15), .7,.55, .55, matGWRibbon);
+    const parS=SIp.map((p,i)=>new THREE.Vector3(
+      p.x+PRIp[i].x*4.5*side, p.y+THIp[i]-.25, p.z+PRIp[i].z*4.5*side));
+    ribbon(parS,PRIp,SIp.map(()=>1.15), .7,.55, .55, matGWRibbon);
   }
-  {  // 垛口：沿细分采样每 2.4 单位摆放（段内插值），Y 严格贴合女墙顶
+  {  // 垛口：沿细分采样每 2.4 单位摆放（段内插值），Y 严格贴合女墙顶；断崖收口处止步
     const merG=new THREE.BoxGeometry(1.3,1.4,.7);
     const cap=3200;
     const imM=new THREE.InstancedMesh(merG,matGWMerlon,cap);
     const M=new THREE.Matrix4(), qs=new THREE.Quaternion(), up=new THREE.Vector3(0,1,0), S1=new THREE.Vector3();
     let mi=0;
     for(let i=1;i<SI.length&&mi<cap;i++){
+      if(SI[i].x>1000) continue;
       const p0=SI[i-1], p1=SI[i];
       const d=p0.distanceTo(p1);
       const k=Math.max(1,Math.round(d/2.4));
@@ -1894,6 +1908,16 @@ function terrainH(x,z){
       }
     }
     imM.count=mi; gw.add(imM);
+  }
+  {  // 断口散落砖石堆：垛墙止步处的风化叙事
+    const rp=P[Math.max(0,Math.min(P.length-1,Math.round((1002+1160)/5)))];
+    const rubble=new THREE.Mesh(mergeGeo([
+      {geo:jitterGeo(new THREE.IcosahedronGeometry(2.6,1),.5),m:new THREE.Matrix4().makeTranslation(0,.4,1.6)},
+      {geo:jitterGeo(new THREE.IcosahedronGeometry(1.8,1),.5),m:new THREE.Matrix4().makeTranslation(2.2,.3,-1.2)},
+      {geo:jitterGeo(new THREE.IcosahedronGeometry(1.3,1),.5),m:new THREE.Matrix4().makeTranslation(-2,.2,.8)}
+    ]),matGWTower);
+    rubble.position.set(rp.x, GW.gridH(rp.x,rp.z)+4.5, rp.z);
+    rubble.castShadow=true; gw.add(rubble);
   }
 
   // ── 敌楼（每 200 单位一座，收分梯台身）──
@@ -2356,6 +2380,11 @@ function applyLights(name){
   // —— 英雄时刻结束 ——
   document.querySelectorAll('[data-light]').forEach(b=>b.classList.toggle('on',b.dataset.light===name));
   lightMode=name;
+  // 幕次字幕：四幕主题词
+  const ACTS={night: activeWorld==='wall' ? '长城夜巡' : '暮色紫禁', dawn:'晨光金顶', day:'正午丹宸'};
+  const an2=document.getElementById('actname');
+  if(an2 && !an2._hold){ an2.textContent=ACTS[name]||''; an2.classList.add('show');
+    clearTimeout(an2._t); an2._t=setTimeout(()=>an2.classList.remove('show'),3400); }
   void fd.offsetWidth; fd.style.transition='opacity .9s ease'; fd.style.opacity='0';
 }
 document.querySelectorAll('[data-light]').forEach(b=>
@@ -2565,6 +2594,7 @@ function rebuildViewButtons(){
     b.innerHTML=`${lbl}<span class="k">${i+1}</span>`;
     b.addEventListener('click',()=>{ poiLayer.classList.remove('dim'); const v=views[k];
       if(v.light) document.querySelector(`[data-light="${v.light}"]`).click();   // 绑定光照档（晨光金顶等）
+      if(v.light==='dawn'&&fx.sweep) fx.sweepOff=((.78-(performance.now()/1000)*.1)%1.6+1.6)%1.6;   // 扫光对时：落定即峰值
       const an=document.getElementById('actname'); an.textContent=k+' · '+WORLDS[activeWorld].label;
       an.classList.add('show'); clearTimeout(an._t); an._t=setTimeout(()=>an.classList.remove('show'),2600);
       flyTo(v.p,v.t,1900); });
@@ -2790,6 +2820,7 @@ function animate(){
     matWater.visible=true; matWaterMoat.visible=true;
   }   // 每秒一捕水面反射
   if(fx.shaftMat) fx.shaftMat.opacity=lightMode==='dawn'?.5:.12;                            // 晨光光柱
+  if(fx.dust){ fx.dust.material.opacity=lightMode==='dawn'?.8:.15; fx.dust.rotation.y=t*.02; }  // 殿内微尘
   if(fx.clouds) fx.clouds.forEach((c2,i)=>{ c2.position.x+=dt*(3+i*.6); if(c2.position.x>1500) c2.position.x=-1500; });
   if(fx.cloudShadows) fx.cloudShadows.forEach((p,i)=>{                    // 云影随云
     p.position.x=fx.clouds[i].position.x*.92;
@@ -2798,7 +2829,7 @@ function animate(){
   // 英雄时刻：晨档金顶扫光每 16 秒扫过一次
   if(fx.sweep){
     if(lightMode==='dawn'){
-      const ph=(t*.1)%1.6;
+      const ph=((t*.1)+(fx.sweepOff||0))%1.6;
       fx.sweep.position.z=800-ph*1600;
       fx.sweep.material.opacity=Math.max(0,.5*(1-Math.abs(ph-.8)/.5));
     } else fx.sweep.material.opacity=0;
@@ -2810,7 +2841,8 @@ function animate(){
     const tgt = lightMode==='night' ? .16 : (lightMode==='dawn' ? .34 : .26);
     AMBIENCE.master.gain.value += (tgt-AMBIENCE.master.gain.value)*Math.min(1,dt*2);
     if(AMBIENCE.murmur) AMBIENCE.murmur.gain.value = lightMode==='day' ? .12 : (lightMode==='dawn' ? .04 : 0);
-    if(lightMode==='dawn' && t-AMBIENCE.lastBell>8){ AMBIENCE.lastBell=t; AMBIENCE.bell(); }
+    if(AMBIENCE.windLP) AMBIENCE.windLP.frequency.value=380+window.__r3.camera.position.y*.12;
+    if(lightMode==='dawn' && t-AMBIENCE.lastBell>8){ AMBIENCE.lastBell=t; AMBIENCE.bell(); setTimeout(()=>AMBIENCE.bell&&AMBIENCE.bell(.06),600); }
   }
   // 人群沿区带缓行（摆臂感用微幅侧移近似）
   if(fx.crowd&&fx.crowdPeople){
