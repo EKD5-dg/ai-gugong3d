@@ -350,6 +350,17 @@ sun.shadow.camera.left=-560; sun.shadow.camera.right=560;
 sun.shadow.camera.top=620;  sun.shadow.camera.bottom=-620;
 sun.shadow.camera.near=60;  sun.shadow.camera.far=1700;
 sun.shadow.bias=-0.0006; sun.shadow.normalBias=.8;
+// 三大殿近景补光阴影：独立 2048 窄域相机，接触影不再糊
+const sun2=new THREE.DirectionalLight(0xffe8c0,.4);
+sun2.position.set(160,190,-190);
+sun2.castShadow=true;
+sun2.shadow.mapSize.set(2048,2048);
+sun2.shadow.camera.left=-120; sun2.shadow.camera.right=120;
+sun2.shadow.camera.top=120; sun2.shadow.camera.bottom=-120;
+sun2.shadow.camera.near=40; sun2.shadow.camera.far=700;
+sun2.shadow.bias=-0.0005; sun2.shadow.normalBias=.6;
+sun2.target.position.set(0,5,-45); scene.add(sun2.target);
+scene.add(sun2);
 const fill = new THREE.DirectionalLight(0x9fd0ff, .55); fill.position.set(60,160,-520); scene.add(fill);
 const fill2 = new THREE.DirectionalLight(0xbfd8ff, .32); fill2.position.set(-120,180,560); scene.add(fill2); // 北向补光：照亮背面/内墙
 const moonLight = new THREE.DirectionalLight(0xbfd0e8, .55); moonLight.position.set(-1250,520,-1350); scene.add(moonLight); // 月光：勾出远山形体
@@ -495,7 +506,7 @@ const texDoorStud=canvasTex(512,768,(g,w,h)=>{
     g.fillStyle=r; g.beginPath(); g.arc(x,y,16,0,7); g.fill();
   }
 });
-// 广场砖铺装
+// 广场砖铺装（中央御路浅色石带明暗拼贴）
 const texPlaza=canvasTex(512,512,(g,w,h)=>{
   g.fillStyle='#131d33'; g.fillRect(0,0,w,h);
   const s=128;
@@ -505,6 +516,9 @@ const texPlaza=canvasTex(512,512,(g,w,h)=>{
     g.fillRect(x*s+3,y*s+3,s-6,s-6);
     g.fillStyle='rgba(130,190,230,.05)'; g.fillRect(x*s+3,y*s+3,s-6,3);
   }
+  g.fillStyle='rgba(178,196,220,.10)'; g.fillRect(w*.40,0,w*.20,h);   // 御路浅色带
+  g.strokeStyle='rgba(178,196,220,.16)'; g.lineWidth=3;
+  g.strokeRect(w*.40,0,w*.20,h);
 });
 // 长城马道浅灰石板（自然不规则石板，非方格玻璃）
 const texPave=canvasTex(512,512,(g,w,h)=>{
@@ -730,7 +744,7 @@ function hipRoofGeo(w,d,h,ridge=.58,curve=2.05,N=8){
         const f=i3/5;
         const px=A[0]+(B[0]-A[0])*f, pz=A[1]+(B[1]-A[1])*f;
         const liftE=lift*Math.pow(Math.abs(Math.cos(f*Math.PI/2)),1.5);   // 起翘沿檐口向中段衰减
-        const disp=amp*(0.5+0.5*Math.sin(f*Math.PI*14));
+        const disp=amp*(0.5+0.5*Math.sin(f*Math.PI*4));
         pos.push(px, y+liftE+disp, pz);
         uv.push(px/5,pz/5);
       }
@@ -786,7 +800,7 @@ function pyramidGeo(w,d,h,curve=2.05,N=8){
   const ring=(s)=>{
     const a=1-s, y=h*Math.pow(s,curve)+.008*(w+d)*Math.pow(1-s,2.2);   // 檐环微起翘，与庑殿同语言
     const amp=.14*(1-s);
-    const groove=(px,pz)=>{const th=Math.atan2(pz,px);return amp*(.55+.45*Math.sin(th*16));};
+    const groove=(px,pz)=>{const th=Math.atan2(pz,px);return amp*(.55+.45*Math.sin(th*8));};
     const P=(X,Z)=>{const gg=groove(X,Z);return [X,y+gg,Z];};
     const V=[P(-w/2*a,d/2*a),P(0,d/2*a),P(w/2*a,d/2*a),P(w/2*a,0),
              P(w/2*a,-d/2*a),P(0,-d/2*a),P(-w/2*a,-d/2*a),P(-w/2*a,0)];
@@ -1542,7 +1556,7 @@ for(let gx=-3;gx<=3;gx++) for(let gz=0;gz<5;gz++){
     {geo:new THREE.SphereGeometry(.14,6,5),m:new THREE.Matrix4().makeTranslation(0,1.32,0)}
   ]);
   const matPerson=new THREE.MeshStandardMaterial({color:0x2a3242,roughness:.9});
-  const zones=[[-430,-378,-45,45],[-290,-178,-56,56],[76,97,31,54],[103,116,31,54],[76,97,-54,-31],[103,116,-54,-31],[136,300,-56,-46],[136,300,46,56],[330,372,-40,40],[412,464,-40,40]];
+  const zones=[[-430,-378,-45,45],[-290,-178,-56,56],[88,97,31,54],[103,116,31,54],[88,97,-54,-31],[103,116,-54,-31],[136,300,-56,-46],[136,300,46,56],[330,372,-40,40],[412,464,-40,40]];
   // 禁落区：内金水河/乾清门城台/台基边坡——落点重生成
   const rej=[[-62,62,-376,-348],[-30,30,86,114],[-48,-38,116,314],[38,48,116,314],[-28,28,116,126],[-28,28,-170,-158],[30,110,96,104],[-110,-30,96,104],[-28,28,74,88]];
   const bad=(x,z)=>rej.some(r=>x>=r[0]&&x<=r[1]&&z>=r[2]&&z<=r[3]);
@@ -1837,6 +1851,7 @@ function terrainH(x,z){
         const prx=PRI[i-1].x+(PRI[i].x-PRI[i-1].x)*t, prz=PRI[i-1].z+(PRI[i].z-PRI[i-1].z)*t;
         for(const side of [1,-1]){
           if(mi>=cap) break;
+          if(((mi*7919)%97)<6){ mi++; continue; }   // 垛口残损：约 6% 缺失（风化示意）
           const hh=.72+((mi*7)%3)*.13;
           S1.set(1,hh,1);
           M.compose(new THREE.Vector3(x+prx*4.5*side,yTop+hh/2,z+prz*4.5*side),qs,S1);
@@ -1924,7 +1939,7 @@ function terrainH(x,z){
   }
   GW.haohan=steepest;
   // ── 烽火台 ×2 + 狼烟火光 ──
-  [Math.floor(n*.2),Math.floor(n*.82)].forEach(idx=>{
+  [Math.floor(n*.16),Math.floor(n*.78)].forEach(idx=>{
     const p=P[idx], g=new THREE.Group();
     const cMinY=Math.min(GW.gridH(p.x-10,p.z),GW.gridH(p.x+10,p.z),GW.gridH(p.x,p.z-10),GW.gridH(p.x,p.z+10));
     g.position.set(p.x,cMinY,p.z);   // 四角最低落位 + 下延 10
@@ -2360,6 +2375,8 @@ async function kioskLoop(my){
     for(let i=0;i<list.length;i++){
       if(!alive()||activeWorld!==myWorld) break;   // 观众切换世界 → 本圈作罢
       if(performance.now()-lastActive<8000){ i--; await wait(2000); continue; }  // 观众操作中 → 停留当前视点暂缓（不跳过）
+      if(myWorld==='gugong'&&i===18){ document.querySelector('[data-light="dawn"]').click(); }  // 三幕：景山压轴切晨光金顶
+      else if(myWorld==='gugong'&&i===0){ document.querySelector('[data-light="night"]').click(); }  // 开篇夜色
       openPOI(i);
       await wait(7600); if(!alive())return;
     }
