@@ -1137,6 +1137,20 @@ function palace(o){
       box(g,1.0,.75,1.5, bx-sgn*.45,rt+roofH+2.15,0, matGoldDark,false);
       box(g,.5,1.5,.8,  bx+sgn*.35,rt+roofH+2.5,0, matGoldDark,false);
     }
+    // 滴水瓦当排：前后檐口一排半圆瓦当（instanced，随檐口微起翘省略角部 15%）
+    {
+      const n2=Math.max(6,Math.round(rw/1.1));
+      const wad=new THREE.InstancedMesh(new THREE.CylinderGeometry(.19,.22,.4,8),matGoldDark,n2*2);
+      const Mw=new THREE.Matrix4(); let wi=0;
+      for(let k2=0;k2<n2;k2++){
+        const f2=.15+.7*(k2/(n2-1));
+        const px2=-rw/2+f2*rw, pz2=(d+(double?-12:8))/2+.15;
+        const y2=rt+.18;   // 檐口基线（角部起翘区 15% 已避开）
+        Mw.makeRotationX(Math.PI/2); Mw.setPosition(px2,y2,pz2); wad.setMatrixAt(wi++,Mw);
+        Mw.makeRotationX(Math.PI/2); Mw.setPosition(px2,y2,-pz2); wad.setMatrixAt(wi++,Mw);
+      }
+      wad.count=wi; g.add(wad);
+    }
     if(o.shan){   // 歇山山花：正脊两端三角梅花板（保和殿/文华/武英）
       const gw2=rd*.3, gh=roofH*.5;
       const shp=new THREE.Shape(); shp.moveTo(-gw2,0); shp.lineTo(gw2,0); shp.lineTo(0,gh); shp.closePath();
@@ -1413,6 +1427,9 @@ const matPlaza2  =std({map:rep(texPlaza,7,9),roughness:.9,color:0xd8e4f4});
   mkZone(300,170,0,565,matPlaza);
   const river=new THREE.Mesh(new THREE.PlaneGeometry(214,22),matWater);
   river.rotation.x=-Math.PI/2; river.position.set(0,.3,-362); city.add(river);
+  const yuluStrip=new THREE.Mesh(new THREE.PlaneGeometry(6.5,380),
+    new THREE.MeshStandardMaterial({color:0x0d1524,roughness:.55}));
+  yuluStrip.rotation.x=-Math.PI/2; yuluStrip.position.set(0,.34,-55); city.add(yuluStrip);   // 御路暗石条（丹陛轴线）
   box(city,214,1.2,3, 0,.55,-374, matMarble);
   box(city,214,1.2,3, 0,.55,-350, matMarble);
   const grid=new THREE.GridHelper(3400,68,0x0c2c3e,0x081b28);
@@ -1570,7 +1587,9 @@ for(let gx=-3;gx<=3;gx++) for(let gz=0;gz<5;gz++){
 {
   const personGeo=mergeGeo([
     {geo:new THREE.CylinderGeometry(.16,.22,1.05,6),m:new THREE.Matrix4().makeTranslation(0,.62,0)},
-    {geo:new THREE.SphereGeometry(.14,6,5),m:new THREE.Matrix4().makeTranslation(0,1.32,0)}
+    {geo:new THREE.SphereGeometry(.14,6,5),m:new THREE.Matrix4().makeTranslation(0,1.32,0)},
+    {geo:new THREE.BoxGeometry(.36,.16,.2),m:new THREE.Matrix4().makeTranslation(0,1.06,0)},
+    {geo:new THREE.CylinderGeometry(.24,.15,.28,6),m:new THREE.Matrix4().makeTranslation(0,.16,0)}
   ]);
   const matPerson=new THREE.MeshStandardMaterial({color:0x2a3242,roughness:.9});
   const zones=[[-430,-378,-45,45],[-290,-178,-56,56],[88,97,31,54],[103,116,31,54],[88,97,-54,-31],[103,116,-54,-31],[136,300,-56,-46],[136,300,46,56],[330,372,-40,40],[412,464,-40,40]];
@@ -2344,7 +2363,7 @@ orbitBtn.addEventListener('click',()=>{
 const LIGHTS={
   night:{bg:0x04070f,fog:[0x182a42,520,3400],hemi:.5,hemiG:0x0b1220,amb:.6,sun:[0xbfd0e8,.5],sunPos:[-900,420,-1150],fill:.35,fill2:.28,moonL:.85,moon:1,stars:.7,bloom:.75,expo:1.12},
   dawn:{bg:0x0d1626,fog:[0x3d4a63,430,3100],hemi:.9,hemiG:0x1a2233,amb:.75,sun:[0xffb46a,1.6],sunPos:[600,110,-260],fill:.5,fill2:.3,moonL:0,moon:0,stars:0,bloom:.6,expo:1.06},
-  day:{bg:0xa9bfd4,fog:[0xa9bfd4,700,4200],hemi:1.25,hemiG:0x2a3440,amb:.9,sun:[0xfff3e0,2.1],sunPos:[300,700,150],fill:.85,fill2:.6,moonL:0,moon:0,stars:0,bloom:.3,expo:.96},
+  day:{bg:0xa9bfd4,fog:[0xa9bfd4,700,4200],hemi:1.02,hemiG:0x2a3440,amb:.82,sun:[0xfff3e0,1.75],sunPos:[300,700,150],fill:.7,fill2:.5,moonL:0,moon:0,stars:0,bloom:.2,expo:.9},
   /* 昼档：广场天光补偿 + 地形无自发光 + 描边最弱 */
 };
 let lightMode='night';
@@ -2372,7 +2391,7 @@ function applyLights(name){
   matPlaza.emissiveIntensity=plazaE; matPlaza2.emissiveIntensity=plazaE;
   sun2.intensity = name==='night' ? .25 : (name==='dawn' ? .55 : .3);                    // 近景补光分档
   if(fx.halo) fx.halo.visible=!!L.moon;                                                  // 月晕随月显隐
-  scene.environmentIntensity = name==='day' ? .8 : (name==='dawn' ? .5 : .25);           // IBL 分档
+  scene.environmentIntensity = name==='day' ? .5 : (name==='dawn' ? .5 : .25);           // IBL 分档
   matWater.roughness = name==='day' ? .12 : .25;                                         // 昼水面更镜面
   matWaterMoat.roughness = matWater.roughness;
   if(fx.crowd){ fx.crowd.count = name==='day' ? fx.crowdMax : (name==='dawn' ? Math.floor(fx.crowdMax*.4) : Math.floor(fx.crowdMax*.15)); }
@@ -2594,10 +2613,10 @@ function rebuildViewButtons(){
     b.innerHTML=`${lbl}<span class="k">${i+1}</span>`;
     b.addEventListener('click',()=>{ poiLayer.classList.remove('dim'); const v=views[k];
       if(v.light) document.querySelector(`[data-light="${v.light}"]`).click();   // 绑定光照档（晨光金顶等）
-      if(v.light==='dawn'&&fx.sweep) fx.sweepOff=((.78-(performance.now()/1000)*.1)%1.6+1.6)%1.6;   // 扫光对时：落定即峰值
+      if(v.light==='dawn'&&fx.sweep) fx.sweepOff=((.60-(performance.now()/1000)*.1)%1.6+1.6)%1.6;   // 扫光对时：落定即峰值
       const an=document.getElementById('actname'); an.textContent=k+' · '+WORLDS[activeWorld].label;
       an.classList.add('show'); clearTimeout(an._t); an._t=setTimeout(()=>an.classList.remove('show'),2600);
-      flyTo(v.p,v.t,1900); });
+      flyTo(v.p,v.t, lightMode==="night"?2600:(lightMode==="dawn"?3200:2200)); });
     holder.appendChild(b);
   });
 }
