@@ -474,6 +474,7 @@ const texRoof=canvasTex(512,512,(g,w,h)=>{
       g.beginPath(); g.arc(x*64+off+32,y*rh+rh,31,Math.PI,0); g.fill();
     }
     g.fillStyle='rgba(35,22,4,.6)'; g.fillRect(0,y*rh+rh-5,w,5);
+    for(let x2=-1;x2<w/64+2;x2++){ g.fillStyle='#d8ae55'; g.beginPath(); g.arc(x2*64+off+32,y*rh+rh-9,7,Math.PI,0); g.fill(); }   // 瓦当
   }
 });
 // 灰瓦（长城城楼）
@@ -516,8 +517,8 @@ const texPlaza=canvasTex(512,512,(g,w,h)=>{
     g.fillRect(x*s+3,y*s+3,s-6,s-6);
     g.fillStyle='rgba(130,190,230,.05)'; g.fillRect(x*s+3,y*s+3,s-6,3);
   }
-  g.fillStyle='rgba(178,196,220,.10)'; g.fillRect(w*.40,0,w*.20,h);   // 御路浅色带
-  g.strokeStyle='rgba(178,196,220,.16)'; g.lineWidth=3;
+  g.fillStyle='rgba(178,196,220,.18)'; g.fillRect(w*.40,0,w*.20,h);   // 御路浅色带
+  g.strokeStyle='rgba(178,196,220,.30)'; g.lineWidth=3;
   g.strokeRect(w*.40,0,w*.20,h);
 });
 // 长城马道浅灰石板（自然不规则石板，非方格玻璃）
@@ -800,7 +801,7 @@ function pyramidGeo(w,d,h,curve=2.05,N=8){
   const ring=(s)=>{
     const a=1-s, y=h*Math.pow(s,curve)+.008*(w+d)*Math.pow(1-s,2.2);   // 檐环微起翘，与庑殿同语言
     const amp=.14*(1-s);
-    const groove=(px,pz)=>{const th=Math.atan2(pz,px);return amp*(.55+.45*Math.sin(th*8));};
+    const groove=(px,pz)=>{const th=Math.atan2(pz,px);return amp*(.55+.45*Math.sin(th*8+1.1));};
     const P=(X,Z)=>{const gg=groove(X,Z);return [X,y+gg,Z];};
     const V=[P(-w/2*a,d/2*a),P(0,d/2*a),P(w/2*a,d/2*a),P(w/2*a,0),
              P(w/2*a,-d/2*a),P(0,-d/2*a),P(-w/2*a,-d/2*a),P(-w/2*a,0)];
@@ -1630,6 +1631,7 @@ function terrainH(x,z){
   const fx=Math.min(1,Math.max(0,(1300-Math.abs(x))/80));
   const fz=Math.min(1,Math.max(0,(850-Math.abs(z))/140));
   const f=Math.min(fx,fz);
+  h-=66*Math.max(0,Math.min(1,(x-1005)/95));   // 东端断崖：地形骤沉，城墙随势没入燕山
   return h*f-4.5*(1-f);
 }
   const GW={path:[],towers:[],beacons:[],beaconGroups:[],smoke:[]};
@@ -2310,6 +2312,7 @@ function applyLights(name){
   const plazaE = name==='day' ? .5 : (name==='dawn' ? .12 : 0);                          // 广场昼间天光补偿
   matPlaza.emissive.set(0x8fa3bd); matPlaza2.emissive.set(0x9fb2c8);
   matPlaza.emissiveIntensity=plazaE; matPlaza2.emissiveIntensity=plazaE;
+  sun2.intensity = name==='night' ? .25 : (name==='dawn' ? .55 : .3);                    // 近景补光分档
   if(fx.halo) fx.halo.visible=!!L.moon;                                                  // 月晕随月显隐
   scene.environmentIntensity = name==='day' ? .8 : (name==='dawn' ? .5 : .25);           // IBL 分档
   matWater.roughness = name==='day' ? .12 : .25;                                         // 昼水面更镜面
@@ -2382,6 +2385,7 @@ async function kioskLoop(my){
     }
     if(!alive())return;
     setWorld(activeWorld==='gugong'?'wall':'gugong');
+    if(activeWorld==='wall') applyLights('night');   // 第四幕：长城夜巡（烽火+亮窗）
     await wait(5200);
   }
 }
