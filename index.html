@@ -2476,7 +2476,6 @@ async function kioskLoop(my){
     setWorld(activeWorld==='gugong'?'wall':'gugong');
     if(activeWorld==='wall'){ applyLights('night');   // 第四幕：长城夜巡（烽火+亮窗）
       openPOI(8); await wait(5200); }                 // 压轴：烽火台火盆特写
-    if(activeWorld==='wall') applyLights('night');   // 第四幕：长城夜巡（烽火+亮窗）
     await wait(5200);
   }
 }
