@@ -103,6 +103,10 @@
     letter-spacing:1px;pointer-events:none;font-family:ui-monospace,Consolas,monospace}
   #lightfade{position:fixed;inset:0;background:#02050c;opacity:0;pointer-events:none;z-index:4;
     transition:opacity .9s ease}
+  #actname{position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:9;
+    font-size:15px;letter-spacing:8px;color:#ead9ac;text-shadow:0 0 14px rgba(0,0,0,.85);
+    opacity:0;transition:opacity .7s ease;pointer-events:none;white-space:nowrap}
+  #actname.show{opacity:1}
 
   /* ── 第一人称 ── */
   #fpshud{position:fixed;inset:0;z-index:8;pointer-events:none;display:none}
@@ -169,11 +173,12 @@
 <div id="scanfx"></div>
 <div id="lightfade"></div>
 
-<div class="hud-tl">
+  <div class="hud-tl">
   <div class="logo" id="logo">紫禁城</div>
   <div class="sub" id="sub">FORBIDDEN CITY · 3D DIGITAL TWIN</div>
   <div class="meta">EST. <b>1420</b> · 北京中轴线 · 数字孪生 · THREE.JS 实时渲染</div>
-</div>
+  </div>
+  <div id="actname"></div>
 
 <div id="worldbar">
   <button class="wbtn on" data-world="gugong">紫禁城</button>
@@ -219,6 +224,7 @@
   <div class="sep"></div>
   <button class="btn" id="btn-kiosk">展陈</button>
   <button class="btn" id="btn-fps" title="F">第一人称</button>
+  <button class="btn on" id="btn-amb" title="音景开关">音景</button>
   <div class="sep"></div>
   <button class="btn" id="btn-dir">目录</button>
   <button class="btn" id="btn-shot" title="下载当前画面">截图</button>
@@ -801,7 +807,7 @@ function pyramidGeo(w,d,h,curve=2.05,N=8){
   const ring=(s)=>{
     const a=1-s, y=h*Math.pow(s,curve)+.008*(w+d)*Math.pow(1-s,2.2);   // 檐环微起翘，与庑殿同语言
     const amp=.14*(1-s);
-    const groove=(px,pz)=>{const th=Math.atan2(pz,px);return amp*(.55+.45*Math.sin(th*8+1.1));};
+    const groove=(px,pz)=>amp*(.55+.45*Math.sin(px*.8+pz*.6));
     const P=(X,Z)=>{const gg=groove(X,Z);return [X,y+gg,Z];};
     const V=[P(-w/2*a,d/2*a),P(0,d/2*a),P(w/2*a,d/2*a),P(w/2*a,0),
              P(w/2*a,-d/2*a),P(0,-d/2*a),P(-w/2*a,-d/2*a),P(-w/2*a,0)];
@@ -1583,6 +1589,32 @@ for(let gx=-3;gx<=3;gx++) for(let gz=0;gz<5;gz++){
 // —— 程序化人群结束 ——
 sundial(52,9,-30); sundial(-52,9,-30);
 bronzeCreature(16,9,-142,false); bronzeCreature(-16,9,-142,true);
+// —— 音景：风底噪 + 晨钟 + 昼人声（WebAudio 合成，无音频资源）——
+const AMBIENCE={mute:false,ctx:null,lastBell:-9};
+function initAmbience(){
+  if(AMBIENCE.ctx) return;
+  const C=new (window.AudioContext||window.webkitAudioContext)(); AMBIENCE.ctx=C;
+  const master=C.createGain(); master.gain.value=0; master.connect(C.destination);
+  AMBIENCE.master=master;
+  const len=C.sampleRate*2, buf=C.createBuffer(1,len,C.sampleRate), d0=buf.getChannelData(0);
+  for(let i=0;i<len;i++) d0[i]=Math.random()*2-1;
+  const wind=C.createBufferSource(); wind.buffer=buf; wind.loop=true;
+  const lp=C.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=420;
+  const wg=C.createGain(); wg.gain.value=.5;
+  wind.connect(lp).connect(wg).connect(master); wind.start();
+  const murmur=C.createBufferSource(); murmur.buffer=buf; murmur.loop=true;
+  const bp=C.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=900; bp.Q.value=.6;
+  const mg=C.createGain(); mg.gain.value=0;
+  murmur.connect(bp).connect(mg).connect(master); murmur.start();
+  AMBIENCE.murmur=mg;
+  AMBIENCE.bell=()=>{ const o=C.createOscillator(), g=C.createGain();
+    o.frequency.value=523; o.connect(g).connect(master);
+    g.gain.setValueAtTime(.16,C.currentTime); g.gain.exponentialRampToValueAtTime(.0001,C.currentTime+2.4);
+    o.start(); o.stop(C.currentTime+2.5); };
+}
+addEventListener('pointerdown',()=>{ try{ initAmbience(); AMBIENCE.ctx.resume(); }catch(e){} });
+
+// —— 音景结束 ——
 // —— 午门外华表
 huabiao(-58,0,-552); huabiao(58,0,-552);
 // —— 景山
@@ -2227,6 +2259,8 @@ function buildMarkers(){
 }
 function openPOI(i){
   activePOI=i; const p=WORLDS[activeWorld].pois[i];
+  const an=document.getElementById('actname'); an.textContent=(LANG==='en'?p.en:p.name)+' · '+WORLDS[activeWorld].label;
+  an.classList.add('show'); clearTimeout(an._t); an._t=setTimeout(()=>an.classList.remove('show'),3200);
   document.getElementById('c-name').textContent=p.name;
   document.getElementById('c-en').textContent=p.en;
   document.getElementById('c-year').textContent=p.year;
@@ -2407,6 +2441,11 @@ function exitKiosk(){
 }
 document.getElementById('btn-kiosk').addEventListener('click',enterKiosk);
 document.getElementById('kiosk-exit').addEventListener('click',exitKiosk);
+document.getElementById('btn-amb').addEventListener('click',function(){
+  AMBIENCE.mute=!AMBIENCE.mute;
+  this.classList.toggle('on',!AMBIENCE.mute);
+  if(!AMBIENCE.mute){ try{ initAmbience(); AMBIENCE.ctx.resume(); }catch(e){} }
+});
 // 看门狗：kiosk 下页面报错或渲染冻结 → 自动恢复（30s 宽限，避免与后台节流误判）
 setInterval(()=>{
   if(!kiosk) return;
@@ -2526,6 +2565,8 @@ function rebuildViewButtons(){
     b.innerHTML=`${lbl}<span class="k">${i+1}</span>`;
     b.addEventListener('click',()=>{ poiLayer.classList.remove('dim'); const v=views[k];
       if(v.light) document.querySelector(`[data-light="${v.light}"]`).click();   // 绑定光照档（晨光金顶等）
+      const an=document.getElementById('actname'); an.textContent=k+' · '+WORLDS[activeWorld].label;
+      an.classList.add('show'); clearTimeout(an._t); an._t=setTimeout(()=>an.classList.remove('show'),2600);
       flyTo(v.p,v.t,1900); });
     holder.appendChild(b);
   });
@@ -2554,7 +2595,7 @@ function flyTo(p,t,dur=1800,onDone){
   tourSet(false,true);
   fly={p0:camera.position.clone(),t0:controls.target.clone(),
        p1:new THREE.Vector3(...p),t1:new THREE.Vector3(...t),
-       st:performance.now(),dur,onDone};
+       st:performance.now()+260,dur,onDone};   // 260ms 延迟起飞：与暗幕节奏对齐
   // 不禁用 OrbitControls：飞行块每帧覆写相机，保持启用可让用户在飞行结束瞬间无缝接管拖拽
   // （r170 的 OrbitControls 在 enabled=false 时会丢弃 pointerdown，导致"飞行后第一次拖拽失灵"）
 }
@@ -2701,7 +2742,7 @@ function animate(){
     if(k>=1) growing=false;
   }
   if(fly){
-    const k=Math.min((performance.now()-fly.st)/fly.dur,1);
+    const k=Math.min(Math.max((performance.now()-fly.st)/fly.dur,0),1);
     const e=k<.5?4*k*k*k:1-Math.pow(-2*k+2,3)/2;
     camera.position.lerpVectors(fly.p0,fly.p1,e);
     controls.target.lerpVectors(fly.t0,fly.t1,e);
@@ -2763,12 +2804,22 @@ function animate(){
     } else fx.sweep.material.opacity=0;
   }
   if(fx.glints) fx.glints.forEach((p,i)=>{ p.material.opacity=p.userData.o*(.85+.15*Math.sin(t*2.1+i*2.2)); });
+  if(fx.shaftMat) fx.shaftMat.opacity=lightMode==='dawn'?.5:.12;
+  // 音景四幕：风底噪常驻，昼人声，晨钟每 8s
+  if(AMBIENCE.ctx&&!AMBIENCE.mute){
+    const tgt = lightMode==='night' ? .16 : (lightMode==='dawn' ? .34 : .26);
+    AMBIENCE.master.gain.value += (tgt-AMBIENCE.master.gain.value)*Math.min(1,dt*2);
+    if(AMBIENCE.murmur) AMBIENCE.murmur.gain.value = lightMode==='day' ? .12 : (lightMode==='dawn' ? .04 : 0);
+    if(lightMode==='dawn' && t-AMBIENCE.lastBell>8){ AMBIENCE.lastBell=t; AMBIENCE.bell(); }
+  }
   // 人群沿区带缓行（摆臂感用微幅侧移近似）
   if(fx.crowd&&fx.crowdPeople){
     const M=fx._cm,Q=fx._cq,S=fx._cs,A=fx._ca;
     fx.crowdPeople.forEach((p,i)=>{
       const moving=Math.sin(t*.13+p.ph)>-.35;   // 走停聚散：三成时间驻留
-      const spd=moving?p.spd:0;
+      const spd=(moving?p.spd:0)*(lightMode==='night'?.6:1);   // 夜巡缓行
+      if(lightMode==='dawn'&&p.dir<0) p.dir=1;                 // 晨：升朝向北内廷汇流
+      if(lightMode==='night'&&p.dir>0&&p.z<200) p.dir=-1;      // 夜：散市南流
       p.z+=p.dir*spd*dt;
       if(p.z>p.z1){p.z=p.z1;p.dir=-1;} if(p.z<p.z0){p.z=p.z0;p.dir=1;}
       Q.setFromAxisAngle(A,p.dir>0?0:Math.PI);
