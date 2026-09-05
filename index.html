@@ -291,11 +291,13 @@ renderer.info.autoReset=false;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.12;
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;
+renderer.shadowMap.autoUpdate = false;   // 静态双城：影子只在光照/世界/开关变化时烘焙一次（省去每帧 ~2000 次阴影 draw call）
+renderer.shadowMap.needsUpdate = true;
 
 // MSAA：给 EffectComposer 的渲染目标开 4x 多重采样（否则后期管线丢失抗锯齿）
 const _rtSize=renderer.getDrawingBufferSize(new THREE.Vector2());
-const _msaaRT=new THREE.WebGLRenderTarget(_rtSize.x,_rtSize.y,{samples:4,type:THREE.HalfFloatType});
+const _msaaRT=new THREE.WebGLRenderTarget(_rtSize.x,_rtSize.y,{samples:2,type:THREE.HalfFloatType});
 document.body.appendChild(renderer.domElement);
 renderer.domElement.addEventListener('webglcontextlost',e=>{ e.preventDefault(); location.reload(); });  // GPU 上下文丢失自愈
 
@@ -351,7 +353,7 @@ const hemi=new THREE.HemisphereLight(0x7fb2e8, 0x0b0f1a, .85); scene.add(hemi);
 const amb=new THREE.AmbientLight(0x1c2740, .68); scene.add(amb);
 const sun = new THREE.DirectionalLight(0xffe8c0, 1.35); sun.position.set(340,460,260); scene.add(sun);
 sun.castShadow = true;
-sun.shadow.mapSize.set(4096,4096);
+sun.shadow.mapSize.set(2048,2048);
 sun.shadow.camera.left=-560; sun.shadow.camera.right=560;
 sun.shadow.camera.top=620;  sun.shadow.camera.bottom=-620;
 sun.shadow.camera.near=60;  sun.shadow.camera.far=1700;
@@ -360,7 +362,7 @@ sun.shadow.bias=-0.0006; sun.shadow.normalBias=.8;
 const sun2=new THREE.DirectionalLight(0xffe8c0,.4);
 sun2.position.set(160,190,-190);
 sun2.castShadow=true;
-sun2.shadow.mapSize.set(2048,2048);
+sun2.shadow.mapSize.set(1024,1024);
 sun2.shadow.camera.left=-120; sun2.shadow.camera.right=120;
 sun2.shadow.camera.top=120; sun2.shadow.camera.bottom=-120;
 sun2.shadow.camera.near=40; sun2.shadow.camera.far=700;
@@ -2558,6 +2560,7 @@ function applyLights(name){
   if(an2 && !an2._hold){ an2.textContent=ACTS[name]||''; an2.classList.add('show');
     clearTimeout(an2._t); an2._t=setTimeout(()=>an2.classList.remove('show'),3400); }
   void fd.offsetWidth; fd.style.transition='opacity .9s ease'; fd.style.opacity='0';
+  renderer.shadowMap.needsUpdate=true;   // 光位变了：重烘焙静态影子
 }
 document.querySelectorAll('[data-light]').forEach(b=>
   b.addEventListener('click',()=>applyLights(b.dataset.light)));
@@ -2855,6 +2858,7 @@ function toggleState(k){
     renderer.shadowMap.enabled=state.shadow;
     sun.castShadow=state.shadow;
     scene.traverse(o=>{ if(o.material){ (Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.needsUpdate=true); } });
+    renderer.shadowMap.needsUpdate=true;
   }
 }
 function setXray(on){
@@ -2945,7 +2949,7 @@ function animate(){
     growT+=dt/1.5;
     const k=Math.min(growT,1), e=1-Math.pow(1-k,3);
     city.scale.y=Math.max(e,.001);
-    if(k>=1) growing=false;
+    if(k>=1){ growing=false; renderer.shadowMap.needsUpdate=true; }   // 生长完成：重烘焙静态影子
   }
   if(fly){
     const k=Math.min(Math.max((performance.now()-fly.st)/fly.dur,0),1);
@@ -2989,12 +2993,12 @@ function animate(){
   matWater.emissiveIntensity=wE; matWaterMoat.emissiveIntensity=wE;
   matWater.normalMap.offset.set(t*.018, t*.009);       // 水面缓流
   matWaterMoat.normalMap.offset.set(t*.012, t*.006);   // 护城河独立流向
-  if(fx.cubeCam && t-fx.cubeLast>1){
+  if(fx.cubeCam && activeWorld==='gugong' && t-fx.cubeLast>2.5){
     fx.cubeLast=t;
     matWater.visible=false; matWaterMoat.visible=false;   // 捕捉时隐藏水面自身，防自反馈
     fx.cubeCam.update(renderer,scene);
     matWater.visible=true; matWaterMoat.visible=true;
-  }   // 每秒一捕水面反射
+  }   // 水面反射 2.5s 一捕（每捕=再渲染 6 遍城，1s 一捕会造成周期性掉帧）
   if(fx.shaftMat) fx.shaftMat.opacity=lightMode==='dawn'?.5:.12;                            // 晨光光柱
   if(fx.dust){ fx.dust.material.opacity=lightMode==='dawn'?.8:.15; fx.dust.rotation.y=t*.02; }  // 殿内微尘
   if(fx.goldenDrift){                                                        // 晨光金顶驻留缓推
@@ -3161,7 +3165,7 @@ window.__animate=animate; // 手动步进（rAF 被系统冻结时用于验证�
 window.__fps=fps;         // 调试钩子：第一人称状态
 window.__dbg=()=>({aw:activeWorld,wk:Object.keys(WORLDS),has:!!WORLDS[activeWorld],wpois:WORLDS[activeWorld]?WORLDS[activeWorld].pois.length:-1,
   tourOn,tourPending,fly:!!fly,cols:COLLIDERS.length});
-window.__finishGrow=()=>{ growing=false; city.scale.y=1; clock.getDelta(); };
+window.__finishGrow=()=>{ growing=false; city.scale.y=1; clock.getDelta(); renderer.shadowMap.needsUpdate=true; };
 
 /* ═══════════ 入场 ═══════════ */
 buildMarkers(); rebuildViewButtons();
