@@ -1302,7 +1302,7 @@ function tree(x,z,s=1,kind=1){
     ]),matTrunk); trunk.castShadow=true; g.add(trunk);
     const items=[]; let r=2.2;
     for(let k=0;k<4;k++){
-      items.push({geo:jitterGeo(new THREE.SphereGeometry(r,7,5),.4*s),
+      items.push({geo:jitterGeo(new THREE.SphereGeometry(r,9,7),.13*s),
         m:new THREE.Matrix4().makeTranslation((Math.random()-.5)*.6*s,(3.6+k*1.5)*s,(Math.random()-.5)*.6*s)});
       r*=.72;
     }
@@ -1315,7 +1315,7 @@ function tree(x,z,s=1,kind=1){
     ]),matTrunk); trunk.castShadow=true; g.add(trunk);
     const items=[];
     for(let k=0;k<5;k++){
-      items.push({geo:jitterGeo(new THREE.SphereGeometry(1.4+Math.random()*.9,7,5),.55*s),
+      items.push({geo:jitterGeo(new THREE.SphereGeometry(1.4+Math.random()*.9,9,7),.16*s),
         m:new THREE.Matrix4().makeTranslation((Math.random()-.5)*3.4*s,(4.7+Math.random()*1.5)*s,(Math.random()-.5)*3*s)});
     }
     const canopy=new THREE.Mesh(mergeGeo(items),lm); canopy.castShadow=true; g.add(canopy);
@@ -1785,8 +1785,14 @@ function terrainH(x,z){
   // 山坡散树（双实例化：树干+皱冠，两处 draw call，随机姿态与色相）
   {
     const N=650;
-    const canG=jitterGeo(new THREE.IcosahedronGeometry(1.9,1),.55);
-    const trkG=new THREE.CylinderGeometry(.2,.34,2.4,6);
+    // 松岭树形：三层圆锥 + 顶锥（剪影可读，拒绝"皱石块"）
+    const canG=mergeGeo([
+      {geo:new THREE.ConeGeometry(1.5,1.8,7),m:new THREE.Matrix4().makeTranslation(0,2.1,0)},
+      {geo:new THREE.ConeGeometry(1.12,1.6,7),m:new THREE.Matrix4().makeTranslation(0,3.2,0)},
+      {geo:new THREE.ConeGeometry(.72,1.35,7),m:new THREE.Matrix4().makeTranslation(0,4.25,0)},
+      {geo:new THREE.ConeGeometry(.36,.85,6),m:new THREE.Matrix4().makeTranslation(0,5.0,0)}
+    ]);
+    const trkG=new THREE.CylinderGeometry(.12,.2,1.5,6); trkG.translate(0,.75,0);
     const imC=new THREE.InstancedMesh(canG,matGWTree,N);
     const imT=new THREE.InstancedMesh(trkG,matGWTree,N);
     const M=new THREE.Matrix4(), C=new THREE.Color(), S=new THREE.Vector3();
@@ -1800,8 +1806,8 @@ function terrainH(x,z){
       const s=.7+rnd()*1.2;
       S.set(s,s,s);
       const q=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),rnd()*6.28);
-      M.compose(new THREE.Vector3(x,h+2.5*s,z),q,S); imC.setMatrixAt(placed,M);
-      M.compose(new THREE.Vector3(x,h+.9*s,z),q,S);  imT.setMatrixAt(placed,M);
+      M.compose(new THREE.Vector3(x,h-.1,z),q,S); imC.setMatrixAt(placed,M);
+      M.compose(new THREE.Vector3(x,h-.1,z),q,S);  imT.setMatrixAt(placed,M);
       imC.setColorAt(placed,C.setHSL(.36+rnd()*.05,.4,.08+rnd()*.07));
       imT.setColorAt(placed,C.setHSL(.3,.25,.06+rnd()*.04));
       placed++;
