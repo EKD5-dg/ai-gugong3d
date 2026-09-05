@@ -412,22 +412,22 @@ const texBrick=canvasTex(512,512,(g,w,h)=>{
       g.fillRect(x*bw+off+2,y*bh+2,bw-4,bh-4);
       g.fillStyle='rgba(255,215,175,.06)'; g.fillRect(x*bw+off+2,y*bh+2,bw-4,4);
       g.strokeStyle='rgba(0,0,0,.2)'; g.lineWidth=1.5; g.strokeRect(x*bw+off+2.5,y*bh+2.5,bw-5,bh-5);
-      if(Math.random()<.16){ g.fillStyle='rgba(0,0,0,.28)';
-        g.fillRect(x*bw+off+4+Math.random()*(bw-20),y*bh+4+Math.random()*(bh-14),5+Math.random()*5,3+Math.random()*3); }
-      if(Math.random()<.1){ g.fillStyle='rgba(214,208,192,.09)';
-        g.fillRect(x*bw+off+6+Math.random()*(bw-30),y*bh+bh*.3,12,22); }
+      if(Math.random()<.1){ g.fillStyle='rgba(0,0,0,.18)';
+        g.fillRect(x*bw+off+4+Math.random()*(bw-20),y*bh+4+Math.random()*(bh-14),4+Math.random()*5,3+Math.random()*3); }
+      if(Math.random()<.07){ g.fillStyle='rgba(214,208,192,.06)';
+        g.fillRect(x*bw+off+6+Math.random()*(bw-30),y*bh+bh*.3,10,18); }
     }
   }
 },3.2);
 // 灰砖（长城）
 const texGWBrick=canvasTex(512,512,(g,w,h)=>{
-  g.fillStyle='#3d4349'; g.fillRect(0,0,w,h);
+  g.fillStyle='#2f353b'; g.fillRect(0,0,w,h);
   const bh=64,bw=128;
   for(let y=0;y<h/bh;y++){
     const off=(y%2)*bw/2;
     for(let x=-1;x<w/bw+1;x++){
       const l=.8+Math.random()*.36;
-      g.fillStyle=`rgb(${(118*l)|0},${(126*l)|0},${(134*l)|0})`;
+      g.fillStyle=`rgb(${(99*l)|0},${(106*l)|0},${(113*l)|0})`;
       g.fillRect(x*bw+off+2,y*bh+2,bw-4,bh-4);
       g.fillStyle='rgba(255,255,255,.05)'; g.fillRect(x*bw+off+2,y*bh+2,bw-4,4);
     }
@@ -435,7 +435,7 @@ const texGWBrick=canvasTex(512,512,(g,w,h)=>{
 });
 // 汉白玉石条（斜向云纹走向 + 错缝）
 const texStone=canvasTex(512,512,(g,w,h)=>{
-  g.fillStyle='#8f979e'; g.fillRect(0,0,w,h);
+  g.fillStyle='#7e868d'; g.fillRect(0,0,w,h);
   g.strokeStyle='rgba(255,255,255,.05)'; g.lineWidth=1;
   for(let i=-h;i<w;i+=17){ g.beginPath(); g.moveTo(i,0); g.lineTo(i+h,h); g.stroke(); }
   g.strokeStyle='rgba(30,40,50,.06)';
@@ -473,8 +473,8 @@ const texRoof=canvasTex(512,512,(g,w,h)=>{
     for(let x=-1;x<w/64+2;x++){
       const l=.8+Math.random()*.38;
       const grd=g.createLinearGradient(0,y*rh,0,y*rh+rh);
-      grd.addColorStop(0,`rgb(${(214*l)|0},${(172*l)|0},${(92*l)|0})`);
-      grd.addColorStop(.62,`rgb(${(166*l)|0},${(128*l)|0},${(58*l)|0})`);
+      grd.addColorStop(0,`rgb(${(197*l)|0},${(157*l)|0},${(86*l)|0})`);
+      grd.addColorStop(.62,`rgb(${(151*l)|0},${(115*l)|0},${(54*l)|0})`);
       grd.addColorStop(1,`rgb(${(104*l)|0},${(78*l)|0},${(34*l)|0})`);
       g.fillStyle=grd;
       g.beginPath(); g.arc(x*64+off+32,y*rh+rh,31,Math.PI,0); g.fill();
@@ -535,7 +535,7 @@ const texPlaza=canvasTex(512,512,(g,w,h)=>{
 });
 // 长城马道浅灰石板（自然不规则石板，非方格玻璃）
 const texPave=canvasTex(512,512,(g,w,h)=>{
-  g.fillStyle='#4b525a'; g.fillRect(0,0,w,h);
+  g.fillStyle='#394047'; g.fillRect(0,0,w,h);
   const rows=6, cols=4, rh=h/rows, cw=w/cols;
   for(let y=0;y<rows;y++)for(let x=0;x<cols;x++){
     // 每块石板尺寸微差 + 交错排列
@@ -543,7 +543,7 @@ const texPave=canvasTex(512,512,(g,w,h)=>{
     const lx=x*cw+off, ly=y*rh;
     const lw=cw-4, lh=rh-4;
     const l=.78+Math.random()*.38;
-    g.fillStyle=`rgb(${(132*l)|0},${(140*l)|0},${(148*l)|0})`;
+    g.fillStyle=`rgb(${(109*l)|0},${(116*l)|0},${(124*l)|0})`;
     g.fillRect(lx+2,ly+2,lw,lh);
     // 石面质感（斜向磨痕）
     g.strokeStyle='rgba(255,255,255,.04)'; g.lineWidth=1;
@@ -687,7 +687,7 @@ const matGWWall  = gwBrickMat(4,2);
 const matGWTower = gwBrickMat(3,2.4);
 const matGWLong  = gwBrickMat(40,2.4);
 const matGWRibbon= matWith('gwribbon',()=>std({map:rep(texGWBrick,1,1),roughness:.85,side:THREE.DoubleSide}));
-const matGWMerlon= std({color:0x8a929c,roughness:.82,emissive:0x11141a});   // 垛口：整石哑光（非砖纹像素块）
+const matGWMerlon= matWith('gwmerlon',()=>std({map:rep(texGWBrick,1,1),roughness:.85,emissive:0x0b0e12}));   // 垛口：与墙体同源的灰砖整石
 const matGWTree  = matWith('gwtree',()=>std({color:0xffffff,vertexColors:true,roughness:1}));
 const matGold    = roofMat('gold',texRoof,1,1,0x7a5a28); matGold.side=THREE.DoubleSide; matGold.normalScale=new THREE.Vector2(1.15,1.15);
 const matGoldG   = roofMat('goldg',texRoofG,1,1,0x11151a); matGoldG.side=THREE.DoubleSide;
@@ -697,7 +697,7 @@ const matWallDark= std({color:0x571219,roughness:.85});
 const matMarble  = stoneMat(4,4);
 const matMarbleBig=stoneMat(5,2);
 const matColumn  = std({color:0x61161d,roughness:.7});
-const matDoor    = std({color:0x120a0c,roughness:.9});
+const matDoor    = std({color:0x241317,roughness:.9});
 const matDoorStud= std({map:texDoorStud,roughness:.75});
 const matLeaf    = std({color:0x14523d,roughness:.92});
 const matTreeCyp = std({color:0xffffff,vertexColors:true,roughness:.95});   // 古柏共享（顶点色渐变）
@@ -712,6 +712,7 @@ const WIND=[];
 });
 const matTrunk   = std({color:0x243328,roughness:.95});
 const matHill    = std({color:0x0e2f26,roughness:.95});
+const matHillTree= std({color:0x1d3a28,roughness:1});   // 景山山脊矮松
 const matCaihua  = std({color:0x143a46,roughness:.75});   // 彩画枋
 const matChair   = std({color:0x9c2331,roughness:.5,emissive:0x1a0406}); // 宝座椅披
 const matThroneGold=std({color:0xc9a24a,metalness:.65,roughness:.34,emissive:0x120c02}); // 髹金雕龙
@@ -977,6 +978,11 @@ function interior(g,o,topY){
   box(g,w,bodyH,t, 0,topY+bodyH/2, d/2-t/2, bm,false);
   box(g,t,bodyH,d-2*t, -(w-t)/2,topY+bodyH/2,0, bm,false);
   box(g,t,bodyH,d-2*t,  (w-t)/2,topY+bodyH/2,0, bm,false);
+  // 内衬髹朱漆壁面：殿内不再露出外墙砖纹（外砖内木）
+  const wi=matWith('innerwall',()=>std({color:0x58201f,roughness:.88}));
+  box(g,w-2*t-.8,bodyH-.4,.3, 0,topY+bodyH/2, d/2-t-.16, wi,false);
+  box(g,.3,bodyH-.4,d-2*t-.8, -(w/2-t-.16),topY+bodyH/2,0, wi,false);
+  box(g,.3,bodyH-.4,d-2*t-.8,  (w/2-t-.16),topY+bodyH/2,0, wi,false);
   const wl=(w-doorW)/2;
   box(g,wl,bodyH,t, -(doorW+wl)/2,topY+bodyH/2,-d/2+t/2, bm,false);
   box(g,wl,bodyH,t,  (doorW+wl)/2,topY+bodyH/2,-d/2+t/2, bm,false);
@@ -1036,7 +1042,9 @@ function interior(g,o,topY){
     box(g,3.2,.5,2.6, 0,topY+1.6+.25,zt, matThroneGold,false);
     box(g,2.6,.6,2, 0,topY+2.15,zt, matChair,false);
     box(g,3.2,4.2,.5, 0,topY+1.6+2.1,zt+1, matChair,false);
-    box(g,3.7,4.7,.2, 0,topY+1.6+2.15,zt+1.32, matThroneGold,false);
+    box(g,7.4,4.9,.3, 0,topY+1.6+2.3,zt+1.6, matThroneGold,false);   // 髹金雕龙屏风（横贯主扇）
+    box(g,.4,5.3,.6, -3.7,topY+1.6+2.4,zt+1.5, matGoldDark,false);   // 屏风边框站牙
+    box(g,.4,5.3,.6,  3.7,topY+1.6+2.4,zt+1.5, matGoldDark,false);
     box(g,.45,2,2.3, -1.8,topY+1.6+1,zt, matThroneGold,false);
     box(g,.45,2,2.3,  1.8,topY+1.6+1,zt, matThroneGold,false);
     const orb=new THREE.Mesh(new THREE.SphereGeometry(.5,12,10),matThroneGold);
@@ -1095,7 +1103,7 @@ function palace(o){
     doors(g,w,d,topY,bodyH);
     // 格扇门/窗满披立面（殿宇正背两面）
     if(bodyH>=6){
-      const lt=rep(texLattice,Math.max(2,Math.round(w/7)),1);
+      const lt=rep(texLattice,Math.max(2,Math.round(w/1.5)),1);
       const lm=matWith('lat'+Math.round(w)+'x'+Math.round(bodyH),
         ()=>{const m=std({map:lt,roughness:.72,emissive:new THREE.Color(0xffb46a),emissiveMap:lt,emissiveIntensity:0});
           LATTICE_GLOW.push(m); return m;});
@@ -1198,6 +1206,7 @@ function gate(o){
     box(g,w*.2,h*.6,2.4, 0,h*.3, s*(d/2-.6), matDoor,false);
     box(g,w*.12,h*.4,2,  w*.3,h*.2, s*(d/2-.4), matDoor,false);
     box(g,w*.12,h*.4,2, -w*.3,h*.2, s*(d/2-.4), matDoor,false);
+    box(g,w*.26,h*.08,3, 0,h*.63, s*(d/2-.55), matMarble,false);   // 门洞石过梁
   });
   const t=palace({w:w*.62,d:d*.85,bodyH:h*.58,tiers:0,roofH:towerH,bm,collide:false});  // 城楼已被城台碰撞覆盖
   t.position.y=h; g.add(t);
@@ -1496,6 +1505,10 @@ const matPlaza2  =std({map:rep(texPlaza,7,9),roughness:.9,color:0xd8e4f4});
   box(g,11,8,2.6, -30,4,-21.2, matDoor,false);
   box(g,11,8,2.6,  30,4,-21.2, matDoor,false);
   box(g,16,11,3, 0,5.5,21.4, matDoor,false);
+  box(g,18.5,1,3.4, 0,11.3,-21.4, matMarble,false);   // 门洞石过梁（五凤楼）
+  box(g,18.5,1,3.4, 0,11.3,21.4, matMarble,false);
+  box(g,13,.8,3, -30,8.2,-21.2, matMarble,false);
+  box(g,13,.8,3,  30,8.2,-21.2, matMarble,false);
   const t=palace({w:62,d:20,bodyH:8,tiers:0,roofH:8.5,bm:matWallBig,dougong:true,collide:false}); t.position.y=16; g.add(t);
   const p1=palace({w:18,d:13,bodyH:6,tiers:0,roofH:5,collide:false}); p1.position.set(-74,14,-88); g.add(p1);
   const p2=palace({w:18,d:13,bodyH:6,tiers:0,roofH:5,collide:false}); p2.position.set( 74,14,-88); g.add(p2);
@@ -1603,10 +1616,10 @@ city.add(gate({x:-376,z:-150,w:48,d:20,h:10,rot:Math.PI/2,towerH:5}));
 const whd=palace({w:56,d:26,bodyH:9,tiers:1,roofH:6.5,x: 245,z:-235,dougong:true,shan:true}); whd.userData={poi:16,world:'gugong'}; city.add(whd); compound( 245,-235,56,26);
 const wyd=palace({w:56,d:26,bodyH:9,tiers:1,roofH:6.5,x:-245,z:-235,dougong:true,shan:true}); wyd.userData={poi:17,world:'gugong'}; city.add(wyd); compound(-245,-235,56,26);
 // —— 树木（御花园松柏 / 庭院阔叶）
-for(let gx=-3;gx<=3;gx++) for(let gz=0;gz<5;gz++){
+for(let gx=-3;gx<=3;gx++) for(let gz=0;gz<6;gz++){
   const jx=(Math.sin(gx*12.9+gz*7.7)*.5+.5)*8-4, jz=(Math.cos(gx*5.3+gz*3.1)*.5+.5)*8-4;
   if(gx===0&&gz===2) continue;
-  tree(gx*26+jx, 355+gz*22+jz, .9+((gx*7+gz)%3)*.18, 0);
+  tree(gx*23+jx, 352+gz*20+jz, .9+((gx*7+gz)%3)*.18, 0);
 }
 [-152,152].forEach(sx=>[-165,-120,-78].forEach(z=>{ tree(sx,z,1.05,1); tree(sx+(sx>0?-14:14),z+20,.85,0); }));
 [-90,90].forEach(sx=>[150,210,270].forEach(z=>tree(sx,z,.8,1)));
@@ -1685,13 +1698,40 @@ huabiao(-58,0,-552); huabiao(58,0,-552);
 // —— 景山
 {
   const hill=new THREE.Group(); hill.position.set(0,0,660);
-  [[0,75],[-62,52],[62,52]].forEach(([hx,r])=>{
-    const m=new THREE.Mesh(new THREE.SphereGeometry(r,24,16,0,Math.PI*2,0,Math.PI/2),matHill);
-    m.scale.y=.58; m.position.x=hx; hill.add(m);
+  // 五峰连岭：东西拉长 + 噪声微扰的多瓣山体（替代"三只圆球"剪影），表面矮松覆盖
+  [[0,78,2.1,0],[-40,54,1.3,4],[40,54,1.3,9],[-72,40,1.05,2],[72,40,1.05,6]].forEach(([hx,r,sx2,sd])=>{
+    const hg2=new THREE.SphereGeometry(r,28,18,0,Math.PI*2,0,Math.PI/2);
+    const pa2=hg2.attributes.position;
+    for(let i=0;i<pa2.count;i++){
+      const px=pa2.getX(i), pz=pa2.getZ(i), py=pa2.getY(i);
+      const n=(vhash(Math.round(px)+sd,Math.round(pz)+sd*3)-.5)*6.5*(py/r);
+      pa2.setY(i,py+n);
+      pa2.setX(i,px*sx2);
+    }
+    hg2.computeVertexNormals();
+    const m=new THREE.Mesh(hg2,matHill);
+    m.scale.y=.56; m.position.x=hx; hill.add(m);
   });
+  { // 山脊植被：矮松剪影（打破光滑"蛋壳"受光面）
+    const cn=new THREE.InstancedMesh(new THREE.ConeGeometry(1.9,4.6,6),matHillTree,70);
+    const tk=new THREE.InstancedMesh(new THREE.CylinderGeometry(.22,.32,1.6,5),matTrunk,70);
+    const Mh=new THREE.Matrix4(); let ti=0;
+    [[0,78,2.1],[-40,54,1.3],[40,54,1.3],[-72,40,1.05],[72,40,1.05]].forEach(([hx,r,sx2])=>{
+      for(let k=0;k<14&&ti<70;k++){
+        const a=vhash(k*3+hx,hx+7)*Math.PI*2, rr=Math.sqrt(vhash(k*5+1,hx+k))*.78;
+        const lx=Math.cos(a)*r*rr*.5, lz=Math.sin(a)*r*rr*.5;
+        const ly=Math.sqrt(Math.max(0,1-(lx/(r*sx2))**2-(lz/r)**2))*r*.56;
+        Mh.makeRotationY(vhash(k+2,hx)*6.28);
+        Mh.setPosition(hx+lx,ly+2.1,lz); cn.setMatrixAt(ti,Mh);
+        Mh.setPosition(hx+lx,ly+.6,lz); tk.setMatrixAt(ti,Mh);
+        ti++;
+      }
+    });
+    cn.count=tk.count=ti; hill.add(cn,tk);
+  }
   hill.add(palace({w:16,d:16,bodyH:6,tiers:0,pyr:true,roofH:8,x:0,y:41,z:0,collide:false}));    // 万春亭
-  hill.add(palace({w:11,d:11,bodyH:5,tiers:0,pyr:true,roofH:6,x:-30,y:33,z:-4,collide:false})); // 周赏亭
-  hill.add(palace({w:11,d:11,bodyH:5,tiers:0,pyr:true,roofH:6,x:30,y:33,z:-4,collide:false}));  // 辑芳亭
+  hill.add(palace({w:11,d:11,bodyH:5,tiers:0,pyr:true,roofH:6,x:-30,y:30,z:-4,collide:false})); // 周赏亭
+  hill.add(palace({w:11,d:11,bodyH:5,tiers:0,pyr:true,roofH:6,x:30,y:30,z:-4,collide:false}));  // 辑芳亭
   hill.add(palace({w:10,d:10,bodyH:4,tiers:0,pyr:true,roofH:5,x:-58,y:28,z:-9,collide:false})); // 观妙亭
   hill.add(palace({w:10,d:10,bodyH:4,tiers:0,pyr:true,roofH:5,x:58,y:28,z:-9,collide:false}));  // 富览亭
   hill.userData={poi:18,world:'gugong'};
@@ -1774,9 +1814,9 @@ function terrainH(x,z){
     const a=hs[j0*r+i0],b=hs[j0*r+i0+1],c=hs[(j0+1)*r+i0],d=hs[(j0+1)*r+i0+1];
     return a*(1-tx)*(1-tz)+b*tx*(1-tz)+c*(1-tx)*tz+d*tx*tz;
   };
-  const cA=new THREE.Color(0x0c2a1c),cB=new THREE.Color(0x143020),cC=new THREE.Color(0x27313b),
-        cD=new THREE.Color(0x3d4650),cE=new THREE.Color(0x707c88),cc=new THREE.Color(),
-        cRock=new THREE.Color(0x565c66),cLush=new THREE.Color(0x0f3322),cDry=new THREE.Color(0x37543a);
+  const cA=new THREE.Color(0x0c2a1c),cB=new THREE.Color(0x143020),cC=new THREE.Color(0x242c35),
+        cD=new THREE.Color(0x323a43),cE=new THREE.Color(0x59616b),cc=new THREE.Color(),
+        cRock=new THREE.Color(0x474e58),cLush=new THREE.Color(0x0f3322),cDry=new THREE.Color(0x37543a);
   const r2=sx+1;
   for(let i=0;i<pa.count;i++){
     const x=pa.getX(i),z=pa.getZ(i);
@@ -1792,22 +1832,30 @@ function terrainH(x,z){
     const hl=hs[gz*r2+Math.max(0,gx-1)], hr2=hs[gz*r2+Math.min(sx,gx+1)];
     const hd2=hs[Math.max(0,gz-1)*r2+gx], hu2=hs[Math.min(sz,gz+1)*r2+gx];
     const slope=Math.hypot(hr2-hl,hu2-hd2)/(2*rw/sx);
-    cc.lerp(cRock,Math.max(0,Math.min(1,(slope-.55)/.6))*.7);
+    cc.lerp(cRock,Math.max(0,Math.min(1,(slope-.55)/.6))*.6);
     // 高海拔岩屑
-    if(h>120) cc.lerp(cE,Math.min(1,(h-120)/45)*.6);
+    if(h>120) cc.lerp(cE,Math.min(1,(h-120)/45)*.45);
     // 植被干湿斑块
-    const pn=fbm(x*.01+91.3,z*.01+17.8,3)-.5;
+    const pn=fbm(x*.006+91.3,z*.006+17.8,3)-.5;
     cc.lerp(pn>0?cDry:cLush,Math.min(.45,Math.abs(pn)*1.3));
     // 逐点微抖动，打散色带边界
-    const jv=(vhash(gx*3,gz*7)-.5)*.10;
+    const jv=(vhash(gx*3,gz*7)-.5)*.14;
     colors[i*3]  =Math.max(0,Math.min(1,cc.r+jv));
     colors[i*3+1]=Math.max(0,Math.min(1,cc.g+jv));
     colors[i*3+2]=Math.max(0,Math.min(1,cc.b+jv));
   }
   tgeo.setAttribute('color',new THREE.BufferAttribute(colors,3));
   tgeo.computeVertexNormals();
+  // 微观起伏法线：消除大面积地形"绸缎"平滑感
+  const texTN=(()=>{const c=document.createElement('canvas');c.width=c.height=256;
+    const g=c.getContext('2d');g.fillStyle='rgb(128,128,255)';g.fillRect(0,0,256,256);
+    for(let i=0;i<9000;i++){const v=128+((Math.random()*56)|0)-28;
+      g.fillStyle=`rgba(${v},${v},255,.55)`;
+      g.fillRect(Math.random()*256,Math.random()*256,2+Math.random()*5,2+Math.random()*5);}
+    const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(150,110);return t;})();
   const terrain=new THREE.Mesh(tgeo,new THREE.MeshStandardMaterial({vertexColors:true,roughness:1,
-    emissive:0x10151d,emissiveIntensity:.75}));
+    emissive:0x10151d,emissiveIntensity:.75,
+    normalMap:texTN,normalScale:new THREE.Vector2(.6,.6)}));
   fx.terrainMat=terrain.material;
   gw.add(terrain);
   // 山坡散树（双实例化：树干+皱冠，两处 draw call，随机姿态与色相）
@@ -1927,7 +1975,7 @@ function terrainH(x,z){
       pos.push(p.x-Pr.x*baseHalf,ybI,p.z-Pr.z*baseHalf);  // 1 内底（贴地）
       pos.push(p.x+Pr.x*topHalf, yt,p.z+Pr.z*topHalf);    // 2 外顶
       pos.push(p.x-Pr.x*topHalf, yt,p.z-Pr.z*topHalf);    // 3 内顶
-      const u=acc/6, vt=(yt-Math.max(ybO,ybI))/6;
+      const u=acc/4.5, vt=(yt-Math.max(ybO,ybI))/4.5;
       uv.push(u,0, u,0, u,vt, u,vt);
       if(i<m-1){
         const a=i*4,b=a+4;
@@ -1950,7 +1998,7 @@ function terrainH(x,z){
       if(i>0) acc+=SI[i].distanceTo(SI[i-1]);
       const p=SI[i], Pr=PRI[i], y=p.y+THI[i]+.06;
       pos.push(p.x+Pr.x*3.5,y,p.z+Pr.z*3.5,  p.x-Pr.x*3.5,y,p.z-Pr.z*3.5);
-      uv.push(acc/8,0, acc/8,1);
+      uv.push(acc/3.5,0, acc/3.5,2);
       if(i<m-1){ const a=i*2,b=a+2; idx.push(a,b,b+1, a,b+1,a+1); }
     }
     const g=new THREE.BufferGeometry();
@@ -2028,6 +2076,11 @@ function terrainH(x,z){
     box(g,3.6,4.8,1.4, 0,4.6, 9.2, matDoor,false);
     box(g,1.4,4.8,3.6, -9.2,4.6,0, matDoor,false);
     box(g,1.4,4.8,3.6,  9.2,4.6,0, matDoor,false);
+    // 门洞石过梁（消除"贴纸黑门"感）
+    box(g,4.6,.8,1.6, 0,7.4,-9.2, matGWLong,false);
+    box(g,4.6,.8,1.6, 0,7.4, 9.2, matGWLong,false);
+    box(g,.8,.8,4.6, -9.2,7.4,0, matGWLong,false);
+    box(g,.8,.8,4.6,  9.2,7.4,0, matGWLong,false);
     // 敌楼夜窗：暖光窗孔（夜档自发光，随窗光呼吸）
     const winM=std({color:0x14171d,emissive:0xffb46a,emissiveIntensity:0}); LATTICE_GLOW.push(winM);
     for(const sx2 of [-1,1]) for(const k2 of [-1,1]){
@@ -2093,6 +2146,11 @@ function terrainH(x,z){
     const bbody=new THREE.Mesh(hipFrustumGeo(20,20,15.5,15.5,25),matGWTower);  // 几何底锚定(0..25)
     bbody.position.y=-10; g.add(bbody); edged(bbody,edgeMatG);                 // 下移 10：台身 -10..15，碗/火光露出塔顶
     box(g,13,2,13, 0,14,0, matGWLong,false);
+    // 塔顶垛口围沿（烽火台顶部不再是一块光板）
+    box(g,13,1.1,.7, 0,15.55,-6.15, matGWTower,false);
+    box(g,13,1.1,.7, 0,15.55, 6.15, matGWTower,false);
+    box(g,.7,1.1,13, -6.15,15.55,0, matGWTower,false);
+    box(g,.7,1.1,13,  6.15,15.55,0, matGWTower,false);
     const bowl=new THREE.Mesh(new THREE.CylinderGeometry(3.4,2.4,2.2,12),matGWLong);
     bowl.position.y=15.5; g.add(bowl);
     // 多层火焰：白炽芯 + 橙焰 + 红焰外沿（billboard 叠加，各自变频摇曳）
@@ -2158,17 +2216,17 @@ function terrainH(x,z){
     sizeAttenuation:false,transparent:true,opacity:.7,toneMapped:false}));
   scene.add(starsP); fx.stars=starsP;
   // 夜空明月（两世界共享，不受雾衰减）
-  const moon=new THREE.Mesh(new THREE.SphereGeometry(46,24,18),
-    new THREE.MeshBasicMaterial({color:0xdceafb,fog:false,toneMapped:false}));
+  const moon=new THREE.Mesh(new THREE.SphereGeometry(38,24,18),
+    new THREE.MeshBasicMaterial({color:0xb9cfe6,fog:false,toneMapped:false}));
   moon.position.set(-1250,520,-1350); scene.add(moon); fx.moon=moon;
   // 月晕：additive 径向渐变 sprite
   const haloC=document.createElement('canvas'); haloC.width=haloC.height=128;
   const hg=haloC.getContext('2d'); const hgr=hg.createRadialGradient(64,64,10,64,64,64);
-  hgr.addColorStop(0,'rgba(205,222,255,.55)'); hgr.addColorStop(.4,'rgba(160,190,255,.12)'); hgr.addColorStop(1,'rgba(160,190,255,0)');
+  hgr.addColorStop(0,'rgba(205,222,255,.4)'); hgr.addColorStop(.4,'rgba(160,190,255,.09)'); hgr.addColorStop(1,'rgba(160,190,255,0)');
   hg.fillStyle=hgr; hg.fillRect(0,0,128,128);
   const haloS=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(haloC),
     transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,toneMapped:false,fog:false}));
-  haloS.scale.set(340,340,1); haloS.position.copy(moon.position); scene.add(haloS); fx.halo=haloS;
+  haloS.scale.set(210,210,1); haloS.position.copy(moon.position); scene.add(haloS); fx.halo=haloS;
   // 云 billboard：昼/晨可见，缓漂
   const cloudC=document.createElement('canvas'); cloudC.width=256; cloudC.height=128;
   { const cg=cloudC.getContext('2d');
@@ -2448,7 +2506,7 @@ orbitBtn.addEventListener('click',()=>{
 /* ═══════════ 光照预设（夜/晨/昼） ═══════════ */
 const LIGHTS={
   night:{bg:0x04070f,fog:[0x182a42,520,3400],hemi:.5,hemiG:0x0b1220,amb:.6,sun:[0xbfd0e8,.5],sunPos:[-900,420,-1150],fill:.35,fill2:.28,moonL:.85,moon:1,stars:.7,bloom:.75,expo:1.12},
-  dawn:{bg:0x0d1626,fog:[0x3d4a63,430,3100],hemi:.9,hemiG:0x1a2233,amb:.75,sun:[0xffb46a,1.6],sunPos:[600,110,-260],fill:.5,fill2:.3,moonL:0,moon:0,stars:0,bloom:.6,expo:1.06},
+  dawn:{bg:0x0d1626,fog:[0x3d4a63,430,3100],hemi:.9,hemiG:0x1a2233,amb:.75,sun:[0xffb46a,1.6],sunPos:[600,110,-260],fill:.5,fill2:.3,moonL:0,moon:0,stars:0,bloom:.45,expo:1.06},
   day:{bg:0xa9bfd4,fog:[0xa9bfd4,700,4200],hemi:1.02,hemiG:0x2a3440,amb:.82,sun:[0xfff3e0,1.75],sunPos:[300,700,150],fill:.7,fill2:.5,moonL:0,moon:0,stars:0,bloom:.2,expo:.9},
   /* 昼档：广场天光补偿 + 地形无自发光 + 描边最弱 */
 };
@@ -2461,6 +2519,10 @@ function applyLights(name){
   scene.fog.color.set(L.fog[0]); scene.fog.near=L.fog[1]; scene.fog.far=L.fog[2];
   hemi.intensity=L.hemi; hemi.groundColor.set(L.hemiG); amb.intensity=L.amb;
   sun.intensity=L.sun[1]; sun.color.set(L.sun[0]); sun.position.set(...L.sunPos);   // 三档各有太阳方位：夜=冷月位，晨=低角度暖阳
+  if(activeWorld==='wall'){   // 长城灰砖反光率高：昼/晨降一档日照，保住砖石明暗层次
+    sun.intensity *= name==='day' ? .62 : (name==='dawn' ? .8 : .88);
+    if(name==='day'){ scene.fog.color.set(0x9db2c4); scene.fog.far=3800; }
+  }
   fill.intensity=L.fill; fill2.intensity=L.fill2; moonLight.intensity=L.moonL;
   skyDome.material.map=SKYTEX[name]||SKYTEX.night; skyDome.material.needsUpdate=true;
   fx.moon.visible=!!L.moon;
@@ -2468,17 +2530,22 @@ function applyLights(name){
   bloom.strength=L.bloom; renderer.toneMappingExposure=L.expo;
   const goldI = name==='night' ? .5 : (name==='dawn' ? .15 : 0);   // 金顶夜色回归：夜档琉璃自发光
   matGold.emissiveIntensity=goldI; matGoldAmber.emissiveIntensity=goldI; matGoldG.emissiveIntensity=goldI*.6;
-  fx.clouds.forEach(c2=>c2.material.opacity = name==='day'?.5:(name==='dawn'?.38:.1));   // 云分档
-  if(fx.terrainMat) fx.terrainMat.emissiveIntensity = name==='day' ? 0 : .75;            // 昼间关地形自发光
+  fx.clouds.forEach(c2=>c2.material.opacity = name==='day'?.5:(name==='dawn'?.38:.05));   // 云分档（夜近隐）
+  if(fx.terrainMat) fx.terrainMat.emissiveIntensity = name==='day' ? 0 : (name==='dawn' ? .3 : .42);  // 昼间关地形自发光（长城山体夜景不再泛灰）
   const eo = name==='day' ? .16 : (name==='dawn' ? .3 : .42);                            // 描边昼间衰减
   edgeMat.opacity=eo; edgeMatG.opacity=eo*.95;
-  const plazaE = name==='day' ? .5 : (name==='dawn' ? .12 : 0);                          // 广场昼间天光补偿
+  const plazaE = name==='day' ? .32 : (name==='dawn' ? .1 : 0);                          // 广场昼间天光补偿（防汉白玉过曝）
   matPlaza.emissive.set(0x8fa3bd); matPlaza2.emissive.set(0x9fb2c8);
   matPlaza.emissiveIntensity=plazaE; matPlaza2.emissiveIntensity=plazaE;
   sun2.intensity = name==='night' ? .25 : (name==='dawn' ? .55 : .3);                    // 近景补光分档
   if(fx.halo) fx.halo.visible=!!L.moon;                                                  // 月晕随月显隐
   scene.environmentIntensity = name==='day' ? .5 : (name==='dawn' ? .5 : .25);           // IBL 分档
-  matWater.roughness = name==='day' ? .12 : .25;                                         // 昼水面更镜面
+  matWater.roughness = name==='day' ? .12 : .6;                                          // 昼水面更镜面（夜拉糙+去金属：月光辉耀不再炸成光斑）
+  matWaterMoat.roughness = name==='day' ? .15 : .65;
+  matWater.metalness = name==='day' ? .2 : .02;
+  matWaterMoat.metalness = name==='day' ? .2 : .02;
+  if(matWaterMoat.envMap){ matWater.envMapIntensity = name==='day' ? .75 : .15;          // 夜档压低环境反射：月亮在 CubeCamera 贴图里的高光不再炸开
+    matWaterMoat.envMapIntensity = name==='day' ? .4 : .08; }
   matWaterMoat.roughness = matWater.roughness;
   if(fx.crowd){ fx.crowd.count = name==='day' ? fx.crowdMax : (name==='dawn' ? Math.floor(fx.crowdMax*.4) : Math.floor(fx.crowdMax*.15)); }
   if(fx.glints) fx.glints.forEach(p=>{ p.userData.o = name==='night' ? .5 : (name==='dawn' ? .2 : 0); });
@@ -2722,6 +2789,7 @@ function setWorld(k){
   document.getElementById('sub').textContent=WORLDS[k].sub;
   document.querySelectorAll('.wbtn[data-world]').forEach(b=>b.classList.toggle('on',b.dataset.world===k));
   buildMarkers(); rebuildViewButtons();
+  applyLights(lightMode);   // 世界切换后按新世界重估光照（长城灰砖降曝补偿即时生效）
   const v=WORLDS[k].views['全景']; flyTo(v.p,v.t,2400);
 }
 document.querySelectorAll('.wbtn[data-world]').forEach(b=>
