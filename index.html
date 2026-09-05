@@ -682,7 +682,7 @@ const matGWTower = gwBrickMat(3,2.4);
 const matGWLong  = gwBrickMat(40,2.4);
 const matGWRibbon= matWith('gwribbon',()=>std({map:rep(texGWBrick,1,1),roughness:.85,side:THREE.DoubleSide}));
 const matGWMerlon= std({color:0x8a929c,roughness:.82,emissive:0x11141a});   // 垛口：整石哑光（非砖纹像素块）
-const matGWTree  = matWith('gwtree',()=>std({color:0xffffff,roughness:1}));
+const matGWTree  = matWith('gwtree',()=>std({color:0x2a4434,roughness:1}));
 const matGold    = roofMat('gold',texRoof,1,1,0x7a5a28); matGold.side=THREE.DoubleSide; matGold.normalScale=new THREE.Vector2(1.15,1.15);
 const matGoldG   = roofMat('goldg',texRoofG,1,1,0x11151a); matGoldG.side=THREE.DoubleSide;
 const matGoldAmber=roofMat('amber',texRoof,1,1,0x6a4a20); matGoldAmber.side=THREE.DoubleSide; matGoldAmber.color=new THREE.Color(0xd4a860); matGoldAmber.normalScale=new THREE.Vector2(1.15,1.15); // 后宫偏琥珀
@@ -694,8 +694,8 @@ const matColumn  = std({color:0x61161d,roughness:.7});
 const matDoor    = std({color:0x120a0c,roughness:.9});
 const matDoorStud= std({map:texDoorStud,roughness:.75});
 const matLeaf    = std({color:0x14523d,roughness:.92});
-const matTreeCyp = std({color:0x0e3d2c,roughness:.95});   // 古柏共享
-const matTreeLat = std({color:0x1b5a40,roughness:.95});   // 宫槐共享
+const matTreeCyp = std({color:0xffffff,vertexColors:true,roughness:.95});   // 古柏共享（顶点色渐变）
+const matTreeLat = std({color:0xffffff,vertexColors:true,roughness:.95});   // 宫槐共享（顶点色渐变）
 // 树冠风摆：顶点着色器注入，三类树叶共享时间 uniform
 const WIND=[];
 [matTreeCyp,matTreeLat,matGWTree].forEach(m=>{
@@ -1272,52 +1272,65 @@ function jitterGeo(geo,amt){
 }
 // 简易几何合并（非索引化拼装）
 function mergeGeo(items){
-  const pos=[],nor=[],uv=[];
-  for(const {geo,m} of items){
+  const pos=[],nor=[],uv=[],col=[];
+  const hasCol=items.some(it=>it.color);
+  for(const {geo,m,color} of items){
     const g=geo.index?geo.toNonIndexed():geo;
     const pa=g.attributes.position, na=g.attributes.normal, ua=g.attributes.uv;
     const nm=new THREE.Matrix3().getNormalMatrix(m);
     const v=new THREE.Vector3();
+    const cc=color||{r:1,g:1,b:1};
     for(let i=0;i<pa.count;i++){
       v.fromBufferAttribute(pa,i).applyMatrix4(m); pos.push(v.x,v.y,v.z);
       v.fromBufferAttribute(na,i).applyMatrix3(nm).normalize(); nor.push(v.x,v.y,v.z);
       uv.push(ua?ua.getX(i):0, ua?ua.getY(i):0);
+      if(hasCol) col.push(cc.r,cc.g,cc.b);
     }
   }
   const g=new THREE.BufferGeometry();
   g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
   g.setAttribute('normal',new THREE.Float32BufferAttribute(nor,3));
   g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
+  if(hasCol) g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
   return g;
 }
 // 树（kind: 0 古柏 / 1 宫槐）——皱面有机树冠 + 曲干，每棵独立色相
 function tree(x,z,s=1,kind=1){
   const g=new THREE.Group(); g.position.set(x,0,z);
   g.rotation.y=Math.random()*Math.PI*2;
-  const tint=kind?0x1b5a40:0x0e3d2c;
-  const lm=kind?matTreeLat:matTreeCyp;   // 共享材质（不再每棵克隆）
-  if(kind===0){ // 古柏：塔形三层皱冠
+  const lm=kind?matTreeLat:matTreeCyp;   // 共享材质（顶点色渐变，下暗上亮）
+  if(kind===0){ // 古柏：柱状密冠（多层叠球，逐层提亮，柏木剪影）
     const trunk=new THREE.Mesh(mergeGeo([
-      {geo:new THREE.CylinderGeometry(.3*s,.5*s,2.8*s,7),m:new THREE.Matrix4().makeTranslation(0,1.4*s,0)}
+      {geo:new THREE.CylinderGeometry(.3*s,.5*s,2.8*s,8),m:new THREE.Matrix4().makeTranslation(0,1.4*s,0)}
     ]),matTrunk); trunk.castShadow=true; g.add(trunk);
-    const items=[]; let r=2.2;
-    for(let k=0;k<4;k++){
-      items.push({geo:jitterGeo(new THREE.SphereGeometry(r,9,7),.13*s),
-        m:new THREE.Matrix4().makeTranslation((Math.random()-.5)*.6*s,(3.6+k*1.5)*s,(Math.random()-.5)*.6*s)});
-      r*=.72;
-    }
+    const items=[];
+    const layers=[[2.4,1.15,.8],[3.6,.95,.82],[4.7,.72,.8],[5.6,.45,.75]];
+    layers.forEach(([ly,r,ry],k)=>{
+      const n=3+(k%2);
+      for(let b=0;b<n;b++){
+        const a=(b/n+k*.7)*Math.PI*2, off=(k===0?.42:.5)*s*(.7+.3*((b*37)%10)/10);
+        const col=new THREE.Color().setHSL(.36+Math.random()*.03,.42,.05+.028*k+Math.random()*.02);
+        items.push({geo:jitterGeo(new THREE.SphereGeometry(r*s*(.75+.5*Math.random()),9,7),.08*s),
+          m:new THREE.Matrix4().makeTranslation(Math.cos(a)*off*s,ly*s+(Math.random()-.5)*.5*s,Math.sin(a)*off*s)
+            .multiply(new THREE.Matrix4().makeScale(1,ry,1)),color:col});
+      }
+    });
     const canopy=new THREE.Mesh(mergeGeo(items),lm); canopy.castShadow=true; g.add(canopy);
-  }else{ // 宫槐：曲干阔冠
+  }else{ // 宫槐：曲干阔卵冠（外围垂团+顶部亮团，逐团色差）
     const trunk=new THREE.Mesh(mergeGeo([
-      {geo:new THREE.CylinderGeometry(.3*s,.55*s,3.4*s,7),m:new THREE.Matrix4().makeTranslation(0,1.7*s,0)},
-      {geo:new THREE.CylinderGeometry(.16*s,.22*s,2.4*s,6),
+      {geo:new THREE.CylinderGeometry(.3*s,.55*s,3.4*s,8),m:new THREE.Matrix4().makeTranslation(0,1.7*s,0)},
+      {geo:new THREE.CylinderGeometry(.16*s,.22*s,2.4*s,7),
        m:new THREE.Matrix4().makeTranslation(.9*s,3.9*s,0).multiply(new THREE.Matrix4().makeRotationZ(.55))}
     ]),matTrunk); trunk.castShadow=true; g.add(trunk);
     const items=[];
-    for(let k=0;k<5;k++){
-      items.push({geo:jitterGeo(new THREE.SphereGeometry(1.4+Math.random()*.9,9,7),.16*s),
-        m:new THREE.Matrix4().makeTranslation((Math.random()-.5)*3.4*s,(4.7+Math.random()*1.5)*s,(Math.random()-.5)*3*s)});
-    }
+    const blobs=[[-1.25,4.7,.95,1.0],[1.3,4.9,1.0,1.05],[0,5.7,.85,1.1],[-.95,5.2,.78,.95],[1.05,5.8,.68,1.0],
+                 [0,4.4,.8,.88],[-.6,6.1,.6,.95],[.7,4.3,.7,.9],[-.3,5.4,.72,1.0],[.35,6.2,.5,.9]];
+    blobs.forEach(([bx,by,r2,ry])=>{
+      const col=new THREE.Color().setHSL(.31+Math.random()*.05,.4,.065+(by-4)*.028+Math.random()*.02);
+      items.push({geo:jitterGeo(new THREE.SphereGeometry(r2*s,10,8),.09*s),
+        m:new THREE.Matrix4().makeTranslation(bx*s+(Math.random()-.5)*.5*s,by*s,(Math.random()-.5)*.9*s)
+          .multiply(new THREE.Matrix4().makeScale(1,ry,1)),color:col});
+    });
     const canopy=new THREE.Mesh(mergeGeo(items),lm); canopy.castShadow=true; g.add(canopy);
   }
   city.add(g);
@@ -1785,14 +1798,21 @@ function terrainH(x,z){
   // 山坡散树（双实例化：树干+皱冠，两处 draw call，随机姿态与色相）
   {
     const N=650;
-    // 松岭树形：三层圆锥 + 顶锥（剪影可读，拒绝"皱石块"）
+    // 松岭树形：三层圆锥 + 顶锥（剪影可读，实例色定暗绿）
+    const pineCols=[.03,.055,.08,.11];
     const canG=mergeGeo([
-      {geo:new THREE.ConeGeometry(1.5,1.8,7),m:new THREE.Matrix4().makeTranslation(0,2.1,0)},
-      {geo:new THREE.ConeGeometry(1.12,1.6,7),m:new THREE.Matrix4().makeTranslation(0,3.2,0)},
-      {geo:new THREE.ConeGeometry(.72,1.35,7),m:new THREE.Matrix4().makeTranslation(0,4.25,0)},
-      {geo:new THREE.ConeGeometry(.36,.85,6),m:new THREE.Matrix4().makeTranslation(0,5.0,0)}
+      {geo:new THREE.ConeGeometry(1.5,1.8,7),m:new THREE.Matrix4().makeTranslation(0,2.1,0),
+       color:new THREE.Color().setHSL(.36,.42,pineCols[0])},
+      {geo:new THREE.ConeGeometry(1.12,1.6,7),m:new THREE.Matrix4().makeTranslation(0,3.2,0),
+       color:new THREE.Color().setHSL(.36,.44,pineCols[1])},
+      {geo:new THREE.ConeGeometry(.72,1.35,7),m:new THREE.Matrix4().makeTranslation(0,4.25,0),
+       color:new THREE.Color().setHSL(.37,.46,pineCols[2])},
+      {geo:new THREE.ConeGeometry(.36,.85,6),m:new THREE.Matrix4().makeTranslation(0,5.0,0),
+       color:new THREE.Color().setHSL(.38,.48,pineCols[3])}
     ]);
     const trkG=new THREE.CylinderGeometry(.12,.2,1.5,6); trkG.translate(0,.75,0);
+    { const tn=trkG.attributes.position.count, wArr=new Float32Array(tn*3).fill(1);
+      trkG.setAttribute('color',new THREE.BufferAttribute(wArr,3)); }   // 树干白顶点色，由实例色染棕
     const imC=new THREE.InstancedMesh(canG,matGWTree,N);
     const imT=new THREE.InstancedMesh(trkG,matGWTree,N);
     const M=new THREE.Matrix4(), C=new THREE.Color(), S=new THREE.Vector3();
@@ -1808,8 +1828,8 @@ function terrainH(x,z){
       const q=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),rnd()*6.28);
       M.compose(new THREE.Vector3(x,h-.1,z),q,S); imC.setMatrixAt(placed,M);
       M.compose(new THREE.Vector3(x,h-.1,z),q,S);  imT.setMatrixAt(placed,M);
-      imC.setColorAt(placed,C.setHSL(.36+rnd()*.05,.4,.08+rnd()*.07));
-      imT.setColorAt(placed,C.setHSL(.3,.25,.06+rnd()*.04));
+      imC.setColorAt(placed,C.setHSL(.36+rnd()*.04,.38,.14+rnd()*.09));
+      imT.setColorAt(placed,C.setHSL(.07,.35,.12+rnd()*.06));
       placed++;
     }
     imC.count=placed; imT.count=placed; gw.add(imC,imT);
