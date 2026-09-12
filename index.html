@@ -1533,7 +1533,7 @@ const matPlaza2  =std({map:rep(texPlaza,7,9),roughness:.9,color:0xd8e4f4});
   // 三路台阶（顶面边缘起坡）+ 中路御路斜石（丹陛）
   stairs(t,13,9,-119,-16); stairs(t,13,9,-119,16); stairs(t,22,9,119); stairs(t,10,9,-119);
   const yulu=new THREE.Mesh(new RoundedBoxGeometry(6.5,.55,16.2,2,.2),matMarble);
-  yulu.position.set(0,4.25,-138.4); yulu.rotation.x=.615; yulu.castShadow=true; t.add(yulu);
+  yulu.position.set(0,4.85,-126.6); yulu.rotation.x=-.559; yulu.castShadow=true; t.add(yulu);   // 贴合中路踏跺坡面：北端齐台缘(y≈9)、南端落踏跺根，高端朝北
   balustrade(t,123.2,235.2,9); balustrade(t,135.2,247.2,6);
   city.add(t);
   const td=palace({name:'太和殿',w:64,d:34,bodyH:12,tiers:0,double:true,roofH:10.5,y:9,z:-115,bays:11,
