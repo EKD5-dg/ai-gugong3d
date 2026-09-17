@@ -310,6 +310,10 @@ const SKYTEX={};
   const mkSky=(c0,c1,c2)=>{const cv=document.createElement('canvas');cv.width=2;cv.height=256;
     const g=cv.getContext('2d');const gr=g.createLinearGradient(0,0,0,256);
     gr.addColorStop(0,c0);gr.addColorStop(.62,c1);gr.addColorStop(1,c2);g.fillStyle=gr;g.fillRect(0,0,2,256);
+    // 抖动去色带：8bit 渐变在穹顶上投出环状/斜向 Mach 条纹，±1.5 噪声打散量化台阶
+    const im=g.getImageData(0,0,2,256),dd=im.data;
+    for(let i=0;i<dd.length;i+=4){const n=(Math.random()-.5)*3;dd[i]+=n;dd[i+1]+=n;dd[i+2]+=n;}
+    g.putImageData(im,0,0);
     const t=new THREE.CanvasTexture(cv);t.colorSpace=THREE.SRGBColorSpace;return t;};
   SKYTEX.night=mkSky('#04091a','#0c1830','#20334f');
   SKYTEX.dawn =mkSky('#0a1226','#3a4a68','#d08250');
@@ -327,6 +331,7 @@ skyDome.renderOrder=-1; scene.add(skyDome);
 }
 
 const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, .4, 8000);
+camera.layers.enable(1);   // layer1=云（CubeCamera 内部相机仅 layer0，云不进水面反射）
 camera.position.set(0, 640, 1180);
 
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -428,10 +433,10 @@ const texGWBrick=canvasTex(512,512,(g,w,h)=>{
   for(let y=0;y<h/bh;y++){
     const off=(y%2)*bw/2;
     for(let x=-1;x<w/bw+1;x++){
-      const l=.8+Math.random()*.36;
+      const l=.72+Math.random()*.5;
       g.fillStyle=`rgb(${(99*l)|0},${(106*l)|0},${(113*l)|0})`;
       g.fillRect(x*bw+off+2,y*bh+2,bw-4,bh-4);
-      g.fillStyle='rgba(255,255,255,.05)'; g.fillRect(x*bw+off+2,y*bh+2,bw-4,4);
+      g.fillStyle='rgba(255,255,255,.07)'; g.fillRect(x*bw+off+2,y*bh+2,bw-4,4);
     }
   }
 });
@@ -1105,7 +1110,7 @@ function palace(o){
     doors(g,w,d,topY,bodyH);
     // 格扇门/窗满披立面（殿宇正背两面）
     if(bodyH>=6){
-      const lt=rep(texLattice,Math.max(2,Math.round(w/1.5)),1);
+      const lt=rep(texLattice,Math.max(2,Math.round(w/2.2)),1);   // 原 w/1.5 菱花过密，远看糊成噪点
       const lm=matWith('lat'+Math.round(w)+'x'+Math.round(bodyH),
         ()=>{const m=std({map:lt,roughness:.72,emissive:new THREE.Color(0xffb46a),emissiveMap:lt,emissiveIntensity:0});
           LATTICE_GLOW.push(m); return m;});
@@ -1718,7 +1723,13 @@ huabiao(-58,0,-552); huabiao(58,0,-552);
     m.scale.y=.56; m.position.x=hx; hill.add(m);
   });
   { // 山脊植被：矮松剪影（打破光滑"蛋壳"受光面）
-    const cn=new THREE.InstancedMesh(new THREE.ConeGeometry(1.9,4.6,6),matHillTree,70);
+    // 三层叠锥（仿长城松岭树形），替代单节圆锥的简陋剪影
+    const hillPineG=mergeGeo([
+      {geo:new THREE.ConeGeometry(2.0,2.6,7),m:new THREE.Matrix4().makeTranslation(0,.95,0)},
+      {geo:new THREE.ConeGeometry(1.42,2.2,7),m:new THREE.Matrix4().makeTranslation(0,2.5,0)},
+      {geo:new THREE.ConeGeometry(.82,1.7,6),m:new THREE.Matrix4().makeTranslation(0,3.9,0)},
+    ]);
+    const cn=new THREE.InstancedMesh(hillPineG,matHillTree,70);
     const tk=new THREE.InstancedMesh(new THREE.CylinderGeometry(.22,.32,1.6,5),matTrunk,70);
     const Mh=new THREE.Matrix4(); let ti=0;
     [[0,78,2.1],[-40,54,1.3],[40,54,1.3],[-72,40,1.05],[72,40,1.05]].forEach(([hx,r,sx2])=>{
@@ -1896,7 +1907,7 @@ function terrainH(x,z){
       const q=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),rnd()*6.28);
       M.compose(new THREE.Vector3(x,h-.1,z),q,S); imC.setMatrixAt(placed,M);
       M.compose(new THREE.Vector3(x,h-.1,z),q,S);  imT.setMatrixAt(placed,M);
-      imC.setColorAt(placed,C.setHSL(.36+rnd()*.04,.3,.72+rnd()*.24));
+      imC.setColorAt(placed,C.setHSL(.33+rnd()*.045,.46+rnd()*.14,.2+rnd()*.12));   // 深绿实例色：原 L.72-.96 过浅，昼雾一褪即呈白色团块
       imT.setColorAt(placed,C.setHSL(.07,.4,.22+rnd()*.08));
       placed++;
     }
@@ -1978,15 +1989,18 @@ function terrainH(x,z){
       }
       pos.push(p.x+Pr.x*baseHalf,ybO,p.z+Pr.z*baseHalf);  // 0 外底（贴地）
       pos.push(p.x-Pr.x*baseHalf,ybI,p.z-Pr.z*baseHalf);  // 1 内底（贴地）
-      pos.push(p.x+Pr.x*topHalf, yt,p.z+Pr.z*topHalf);    // 2 外顶
-      pos.push(p.x-Pr.x*topHalf, yt,p.z-Pr.z*topHalf);    // 3 内顶
-      const u=acc/4.5, vt=(yt-Math.max(ybO,ybI))/4.5;
-      uv.push(u,0, u,0, u,vt, u,vt);
+      pos.push(p.x+Pr.x*topHalf, yt,p.z+Pr.z*topHalf);    // 2 外顶（坡面）
+      pos.push(p.x-Pr.x*topHalf, yt,p.z-Pr.z*topHalf);    // 3 内顶（坡面）
+      pos.push(p.x+Pr.x*topHalf, yt,p.z+Pr.z*topHalf);    // 4 外顶（顶面）
+      pos.push(p.x-Pr.x*topHalf, yt,p.z-Pr.z*topHalf);    // 5 内顶（顶面）
+      const u=acc/2.4, vt=(yt-Math.max(ybO,ybI))/2.4;   // 原 /4.5 砖块 1.1×0.56m 过大，远看墙面像抹平；2.4→砖 0.6×0.3m 近真
+      const vTop=2*topHalf/2.4;   // 顶面独立 UV：原与坡面共享顶点(两顶 v 同值)整行采到深色砖缝→远观贯通黑线
+      uv.push(u,0, u,0, u,vt, u,vt, u,0, u,vTop);
       if(i<m-1){
-        const a=i*4,b=a+4;
+        const a=i*6,b=a+6;
         idx.push(a,b,b+2, a,b+2,a+2,          // 外侧坡面（收分）
                  a+1,b+3,b+1, a+1,a+3,b+3,    // 内侧坡面（绕序朝外，与外坡/顶面一致）
-                 a+2,b+2,b+3, a+2,b+3,a+3);   // 顶部走道面
+                 a+4,b+4,b+5, a+4,b+5,a+5);   // 顶部走道面
       }
     }
     const g=new THREE.BufferGeometry();
@@ -2246,6 +2260,7 @@ function terrainH(x,z){
       transparent:true,opacity:.3,depthWrite:false,fog:false,toneMapped:false}));
     sp.scale.set(560+k*90,236+k*36,1);
     sp.position.set(-900+k*620, 960+k*70, -500+k*330);
+    sp.layers.set(1);   // 云不进 CubeCamera（否则水面倒影拉出白色长条异物）
     fx.clouds.push(sp); scene.add(sp);
   }
   // 英雄时刻：晨档"日照金顶"扫光带（沿中轴缓移）
@@ -2526,7 +2541,7 @@ function applyLights(name){
   sun.intensity=L.sun[1]; sun.color.set(L.sun[0]); sun.position.set(...L.sunPos);   // 三档各有太阳方位：夜=冷月位，晨=低角度暖阳
   if(activeWorld==='wall'){   // 长城灰砖反光率高：昼/晨降一档日照，保住砖石明暗层次
     sun.intensity *= name==='day' ? .62 : (name==='dawn' ? .8 : .88);
-    if(name==='day'){ scene.fog.color.set(0x9db2c4); scene.fog.far=3800; }
+    if(name==='day'){ scene.fog.color.set(0x9db2c4); scene.fog.near=1250; scene.fog.far=4300; }   // 雾起点后移：中距山坡林木不再被褪成白色团块
   }
   fill.intensity=L.fill; fill2.intensity=L.fill2; moonLight.intensity=L.moonL;
   skyDome.material.map=SKYTEX[name]||SKYTEX.night; skyDome.material.needsUpdate=true;
