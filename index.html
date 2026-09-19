@@ -2664,10 +2664,11 @@ orbitBtn.addEventListener('click',()=>{
 
 /* ═══════════ 光照预设（夜/晨/昼） ═══════════ */
 const LIGHTS={
-  night:{bg:0x04070f,fog:[0x182a42,520,3400],hemi:.5,hemiG:0x0b1220,amb:.6,sun:[0xbfd0e8,.5],sunPos:[-900,420,-1150],fill:.35,fill2:.28,moonL:.85,moon:1,stars:.7,bloom:.75,expo:1.12},
-  dawn:{bg:0x0d1626,fog:[0x3d4a63,430,3100],hemi:.9,hemiG:0x1a2233,amb:.75,sun:[0xffb46a,1.6],sunPos:[600,110,-260],fill:.5,fill2:.3,moonL:0,moon:0,stars:0,bloom:.45,expo:1.06},
-  day:{bg:0xa9bfd4,fog:[0xa9bfd4,700,4200],hemi:1.02,hemiG:0x2a3440,amb:.82,sun:[0xfff3e0,1.75],sunPos:[300,700,150],fill:.7,fill2:.5,moonL:0,moon:0,stars:0,bloom:.2,expo:.9},
-  /* 昼档：广场天光补偿 + 地形无自发光 + 描边最弱 */
+  night:{bg:0x04070f,fog:[0x182a42,520,3400],hemi:.5,hemiG:0x0b1220,amb:.6,sun:[0xbfd0e8,.5],sunPos:[-900,420,-1150],fill:.35,fill2:.28,rim:.32,moonL:.85,moon:1,stars:.7,bloom:.75,thr:.8,expo:1.12},
+  dawn:{bg:0x0d1626,fog:[0x3d4a63,430,3100],hemi:.9,hemiG:0x1a2233,amb:.75,sun:[0xffb46a,1.6],sunPos:[600,110,-260],fill:.5,fill2:.3,rim:.2,moonL:0,moon:0,stars:0,bloom:.45,thr:.85,expo:1.06},
+  // 昼档环境光预算必须收着：hemi+amb+rim 叠加超过 ~1.4 之后，石材地面（反照率 ~0.5）就顶到白点，
+  // 再被 bloom 晕开就是一团团白光。rim 此前从不按档位调整，一直是 0.32。
+  day:{bg:0xa9bfd4,fog:[0xa9bfd4,700,4200],hemi:.72,hemiG:0x2a3440,amb:.42,sun:[0xfff3e0,1.9],sunPos:[300,700,150],fill:.45,fill2:.32,rim:.06,moonL:0,moon:0,stars:0,bloom:.14,thr:1.05,expo:.92},
 };
 let lightMode='night';
 function applyLights(name){
@@ -2686,7 +2687,8 @@ function applyLights(name){
   skyDome.material.map=SKYTEX[name]||SKYTEX.night; skyDome.material.needsUpdate=true;
   fx.moon.visible=!!L.moon;
   fx.stars.material.opacity=.7*L.stars; fx.stars.visible=L.stars>0;
-  bloom.strength=L.bloom; renderer.toneMappingExposure=L.expo;
+  bloom.strength=L.bloom; bloom.threshold=L.thr; renderer.toneMappingExposure=L.expo;
+  rim.intensity=L.rim;                                     // 青色轮廓补光是夜景语言，昼档必须关掉大半
   const goldI = name==='night' ? .5 : (name==='dawn' ? .15 : 0);   // 金顶夜色回归：夜档琉璃自发光
   matGold.emissiveIntensity=goldI; matGoldAmber.emissiveIntensity=goldI; matGoldG.emissiveIntensity=goldI*.6;
   ROOF_FIT.forEach(m=>m.emissiveIntensity=m.userData.src.emissiveIntensity);   // 按尺寸配平铺的琉璃跟随母材质
@@ -2695,8 +2697,8 @@ function applyLights(name){
   const eo = name==='day' ? .16 : (name==='dawn' ? .3 : .42);                            // 描边昼间衰减
   edgeMat.opacity=eo; edgeMatG.opacity=eo*.95;
   // 地面石材分档着色：昼=青砖本色，晨=暖灰，夜=冷蓝压暗（保住数字孪生夜景）
-  const gc = name==='day' ? 0xffffff : (name==='dawn' ? 0x8d8189 : 0x2a3a55);
-  const ge = name==='day' ? .05 : (name==='dawn' ? .04 : 0);                             // 天光补偿降到配角
+  const gc = name==='day' ? 0xd6d0c4 : (name==='dawn' ? 0x8d8189 : 0x2a3a55);   // 昼档留一点余量，别顶满
+  const ge = name==='day' ? .03 : (name==='dawn' ? .04 : 0);                             // 天光补偿降到配角
   PLAZA_MATS.forEach(m=>{ m.color.set(gc).multiplyScalar(m.userData.tint); m.emissive.set(0x8fa3bd); m.emissiveIntensity=ge; });
   fx.platEdge.material.opacity = name==='day' ? .1 : (name==='dawn' ? .42 : .85);        // 昼档收掉地台发光边线
   fx.zoneLine.opacity = name==='day' ? .07 : (name==='dawn' ? .2 : .35);                 // 分区描边同上
@@ -2706,7 +2708,7 @@ function applyLights(name){
   matLand.color.set      (name==='day' ? 0x8d8f83 : (name==='dawn' ? 0x1e2a40 : 0x0e1727));
   sun2.intensity = name==='night' ? .25 : (name==='dawn' ? .55 : .3);                    // 近景补光分档
   if(fx.halo) fx.halo.visible=!!L.moon;                                                  // 月晕随月显隐
-  scene.environmentIntensity = name==='day' ? .5 : (name==='dawn' ? .5 : .25);           // IBL 分档
+  scene.environmentIntensity = name==='day' ? .3 : (name==='dawn' ? .45 : .25);          // IBL 分档（RoomEnvironment 是室内影棚，白天给多了会整体发灰发亮）
   matWater.roughness = name==='day' ? .12 : .6;                                          // 昼水面更镜面（夜拉糙+去金属：月光辉耀不再炸成光斑）
   matWaterMoat.roughness = name==='day' ? .15 : .65;
   matWater.metalness = name==='day' ? .2 : .02;
