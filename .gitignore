@@ -1,0 +1,5 @@
+# wrangler 本地缓存：含 Cloudflare account id，不应进仓库
+.wrangler/
+
+__pycache__/
+*.pyc
