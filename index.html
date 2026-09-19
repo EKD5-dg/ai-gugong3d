@@ -249,14 +249,18 @@
 
 <script>
   window.__errs=[];
-  window.addEventListener('error',function(e){window.__errs.push(String(e.message||e));});
-  window.addEventListener('unhandledrejection',function(e){window.__errs.push('rejection: '+String(e.reason));});
+  // 合成指针事件在指针已消失时会抛 setPointerCapture NotFoundError，属噪声；
+  // 计入看门狗会让展陈页每隔几分钟无谓整页重载
+  var BENIGN=/setPointerCapture|releasePointerCapture|ResizeObserver loop/i;
+  window.addEventListener('error',function(e){var s=String(e.message||e); if(!BENIGN.test(s)) window.__errs.push(s);});
+  window.addEventListener('unhandledrejection',function(e){var s='rejection: '+String(e.reason); if(!BENIGN.test(s)) window.__errs.push(s);});
+  // 阈值 30s：整座城是同步程序化建模，本机实测就要 ~10s，慢机器上 12s 会先弹"加载失败"再正常启动
   setTimeout(function(){
     if(!window.__APP_READY__){
       var m=document.getElementById('ld-msg');
       if(m) m.textContent='资源加载超时：本地 vendor 加载失败，请确认 vendor 目录完整后刷新（本项目无需联网）';
     }
-  },12000);
+  },30000);
 </script>
 
 <script type="importmap">
@@ -277,6 +281,16 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass }      from 'three/addons/postprocessing/OutputPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+
+// 构建期真实进度：整座城是同步建模的，不主动让帧进度条就永远停在 0%（本机实测构建 ~10s）。
+// 再 race 一个 120ms 定时器：后台标签页 rAF 被冻结时也不会把启动卡死。
+const stage=(label,pct)=>{
+  const f=document.getElementById('ld-fill'), m=document.getElementById('ld-msg');
+  if(f) f.style.width=pct+'%';
+  if(m) m.textContent=label;
+  return new Promise(res=>{ let done=0; const go=()=>{ if(!done++) res(); };
+    requestAnimationFrame(()=>setTimeout(go,0)); setTimeout(go,120); });
+};
 
 /* ═══════════ 渲染器 / 场景 / 相机 ═══════════ */
 let renderer;
@@ -357,6 +371,7 @@ addEventListener('resize',()=>{
 const hemi=new THREE.HemisphereLight(0x7fb2e8, 0x0b0f1a, .85); scene.add(hemi);
 const amb=new THREE.AmbientLight(0x1c2740, .68); scene.add(amb);
 const sun = new THREE.DirectionalLight(0xffe8c0, 1.35); sun.position.set(340,460,260); scene.add(sun);
+scene.add(sun.target);        // target 必须入场景图，matrixWorld 才会被更新（跟随平移依赖它）
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048,2048);
 sun.shadow.camera.left=-560; sun.shadow.camera.right=560;
@@ -379,6 +394,7 @@ const fill2 = new THREE.DirectionalLight(0xbfd8ff, .32); fill2.position.set(-120
 const moonLight = new THREE.DirectionalLight(0xbfd0e8, .55); moonLight.position.set(-1250,520,-1350); scene.add(moonLight); // 月光：勾出远山形体
 const rim = new THREE.DirectionalLight(0x3fd8ff, .32);  rim.position.set(-380,300,-360); scene.add(rim);
 
+await stage('正在烧制砖瓦纹理 · 每一块砖都由代码画出',18);
 /* ═══════════ 程序化纹理工厂（每一块砖 / 每一片瓦都由此生成） ═══════════ */
 function canvasTex(w,h,draw,ns=2.4){
   const c=document.createElement('canvas'); c.width=w; c.height=h;
@@ -664,6 +680,7 @@ function rep(tex,rx,ry){
   texCache[k]=t; return t;
 }
 
+await stage('正在铺陈宫城材质',30);
 /* ═══════════ 材质 ═══════════ */
 const city=new THREE.Group(); scene.add(city);        // 世界一：紫禁城
 const gw=new THREE.Group(); scene.add(gw); gw.visible=false; // 世界二：长城
@@ -1297,6 +1314,26 @@ function archGate(parent,cx,aw,ah,zBase,taper,h,sgn){
   f.position.set(cx,0,sgn*(zBase+.10)); f.rotation.set(tilt,ry,0); parent.add(f);
   const o=new THREE.Mesh(new THREE.ShapeGeometry(archShape(aw,ah)),matDoor);
   o.position.set(cx,0,sgn*(zBase+.03)); o.rotation.set(tilt,ry,0); parent.add(o);
+  if(sgn>0){
+    // 券洞内壁：城台是实心棱台，人不该"在墙里看穿两侧"。BackSide 棱柱只从洞内可见。
+    const tun=new THREE.Mesh(
+      new THREE.ExtrudeGeometry(archShape(aw,ah),{depth:zBase*2,bevelEnabled:false,curveSegments:10}),
+      matWith('archtun',()=>std({color:0x241317,roughness:.95,side:THREE.BackSide})));
+    tun.geometry.translate(0,0,-zBase); tun.position.x=cx; parent.add(tun);
+  }
+}
+// 城台碰撞：沿长轴按券洞位置断开，留出可通行的门洞（此前是一整块实心盒，看得见门却推不开）
+function gateColliders(x,z,w,d,rot,hwArch,sideArch,archX,dep){
+  const alongX=Math.abs(Math.cos(rot))>.5;
+  const open=[[0,hwArch],[-archX,sideArch],[archX,sideArch]]
+    .map(([c,a])=>[c-a,c+a]).sort((p,q)=>p[0]-q[0]);
+  let cur=-w/2-2; const segs=[];
+  for(const [a,b] of open){ if(a>cur) segs.push([cur,a]); cur=Math.max(cur,b); }
+  if(cur<w/2+2) segs.push([cur,w/2+2]);
+  segs.forEach(([a,b])=>{ const c=(a+b)/2, sw=(b-a)/2;
+    if(sw<.5) return;
+    if(alongX) addCollider(x+c,z,sw,dep); else addCollider(x,z+c,dep,sw);
+  });
 }
 // 城门（城台斜收，顶面墁石 + 压顶石框）
 function gate(o){
@@ -1306,8 +1343,7 @@ function gate(o){
   g.position.y-=Math.abs(Math.cos(x*1.1+z*.9))*.06;
   const bf=sh(new THREE.Mesh(hipFrustumGeo(w+1.8,d+1.8,w,d,h),bm));
   g.add(bf); edged(bf);
-  const alongX=Math.abs(Math.cos(rot))>.5;
-  addCollider(x,z, (alongX? w/2+2 : d/2+1), (alongX? d/2+1 : w/2+2));  // 城台碰撞（rot=±π/2 交换长短轴，长轴+2 与两端墙碰撞衔接）
+  gateColliders(x,z,w,d,rot, h*.31, h*.21, w*.30, d/2+1);   // 城台碰撞按三券断开
   // 城台顶面墁石
   const pave=new THREE.Mesh(new THREE.PlaneGeometry(w-1.2,d-1.2),
     matWith('gp'+w+'x'+d,()=>std({map:rep(texPave,Math.max(2,Math.round(w/5)),Math.max(2,Math.round(d/5))),roughness:.92})));
@@ -1541,6 +1577,7 @@ function huabiao(x,z){
   city.add(g);
 }
 
+await stage('正在奠定宫城地台与护城河',42);
 /* ═══════════ 世界一：紫禁城 · 地台与水系 ═══════════ */
 const matPlatform=new THREE.MeshStandardMaterial({color:0x0a1120,roughness:.95});
 const matLand    =new THREE.MeshStandardMaterial({color:0x0e1727,roughness:.95});
@@ -1608,6 +1645,7 @@ function plazaMat(w,d,tint=1){
   fx.axis1=axis1; fx.axis2=axis2;
 }
 
+await stage('正在升起殿宇楼阁',52);
 /* ═══════════ 紫禁城建筑群 ═══════════ */
 // —— 午门（五凤楼）
 {
@@ -1625,7 +1663,7 @@ function plazaMat(w,d,tint=1){
     p.rotation.x=-Math.PI/2; p.position.set(x,y,z); g.add(p);};
   mkPave(118,40,16.08,0,0);
   mkPave(24,64,12.08,-74,-54); mkPave(24,64,12.08,74,-54);
-  addCollider(0,-480,62,22);  // 午门城台碰撞
+  gateColliders(0,-480,120,42,0, 5,3.8,30, 22);  // 午门城台碰撞：三券留口（中券 10m、两侧 7.6m）
   addCollider(-74,-533,15,36); addCollider(74,-533,15,36);  // 双翼/敦台
   [1,-1].forEach(s=>{                                 // 午门城台正面开三券洞，中为御路
     archGate(g,0,     10,12.6, 22.5,.75,16,s);
@@ -1867,6 +1905,7 @@ huabiao(-58,0,-552); huabiao(58,0,-552);
   city.add(hill);
 }
 
+await stage('正在堆砌燕山段长城 · 最慢的一步',68);
 /* ═══════════ 世界二：万里长城 ═══════════ */
 function ridgeZ(x){ return 240*Math.sin(x*.0016)+130*Math.sin(x*.0007*2.3+1.4); }
 function ridgeH(x){ return 95+55*Math.sin(x*.0011+.5)+22*Math.sin(x*.0046+2.); }
@@ -2349,6 +2388,7 @@ function terrainH(x,z){
   });
 }
 
+await stage('正在布设星尘与扫描光幕',88);
 /* ═══════════ 特效（扫描光幕 / 雷达环 / 星尘） ═══════════ */
 {
   const mkSlab=(w,d)=>{const s=new THREE.Mesh(new THREE.BoxGeometry(w,1.1,d),
@@ -2604,7 +2644,9 @@ function buildMarkers(){
   });
 }
 function openPOI(i){
-  activePOI=i; const p=WORLDS[activeWorld].pois[i];
+  const p=WORLDS[activeWorld].pois[i];
+  if(!p) return;                       // 下标越界不再抛错（抛错会被看门狗记账并触发整页重载）
+  activePOI=i;
   const an=document.getElementById('actname'); an.textContent=(LANG==='en'?p.en:p.name)+' · '+WORLDS[activeWorld].label;
   an.classList.add('show'); clearTimeout(an._t); an._t=setTimeout(()=>an.classList.remove('show'),3200);
   document.getElementById('c-name').textContent=p.name;
@@ -2671,6 +2713,10 @@ const LIGHTS={
   day:{bg:0xa9bfd4,fog:[0xa9bfd4,700,4200],hemi:.72,hemiG:0x2a3440,amb:.42,sun:[0xfff3e0,1.9],sunPos:[300,700,150],fill:.45,fill2:.32,rim:.06,moonL:0,moon:0,stars:0,bloom:.14,thr:1.05,expo:.92},
 };
 let lightMode='night';
+let shadowOff=0;                                       // 阴影相机沿 x 的量化跟随量
+// 描边基准透明度只由光照档位决定：关线框时必须回到当前档位的值，
+// 否则「开线框→切昼→关线框」会把描边永久留在夜档的 .42（昼档本该 .16，白边发脏）
+const edgeBase=(m)=>{ m=m||lightMode; return m==='day'?.16:(m==='dawn'?.3:.42); };
 function applyLights(name){
   const L=LIGHTS[name]||LIGHTS.night;
   const fd=document.getElementById('lightfade');         // 光照切换：暗幕过渡（睁眼自适应感）
@@ -2678,7 +2724,10 @@ function applyLights(name){
   scene.background.set(L.bg);
   scene.fog.color.set(L.fog[0]); scene.fog.near=L.fog[1]; scene.fog.far=L.fog[2];
   hemi.intensity=L.hemi; hemi.groundColor.set(L.hemiG); amb.intensity=L.amb;
-  sun.intensity=L.sun[1]; sun.color.set(L.sun[0]); sun.position.set(...L.sunPos);   // 三档各有太阳方位：夜=冷月位，晨=低角度暖阳
+  sun.intensity=L.sun[1]; sun.color.set(L.sun[0]);
+  // 三档各有太阳方位：夜=冷月位，晨=低角度暖阳。position 与 target 同步平移，光向不变、只挪阴影取景框
+  sun.position.set(L.sunPos[0]+shadowOff,L.sunPos[1],L.sunPos[2]);
+  sun.target.position.set(shadowOff,0,0);
   if(activeWorld==='wall'){   // 长城灰砖反光率高：昼/晨降一档日照，保住砖石明暗层次
     sun.intensity *= name==='day' ? .62 : (name==='dawn' ? .8 : .88);
     if(name==='day'){ scene.fog.color.set(0x9db2c4); scene.fog.near=1250; scene.fog.far=4300; }   // 雾起点后移：中距山坡林木不再被褪成白色团块
@@ -2694,7 +2743,7 @@ function applyLights(name){
   ROOF_FIT.forEach(m=>m.emissiveIntensity=m.userData.src.emissiveIntensity);   // 按尺寸配平铺的琉璃跟随母材质
   fx.clouds.forEach(c2=>c2.material.opacity = name==='day'?.5:(name==='dawn'?.38:.05));   // 云分档（夜近隐）
   if(fx.terrainMat) fx.terrainMat.emissiveIntensity = name==='day' ? 0 : (name==='dawn' ? .3 : .42);  // 昼间关地形自发光（长城山体夜景不再泛灰）
-  const eo = name==='day' ? .16 : (name==='dawn' ? .3 : .42);                            // 描边昼间衰减
+  const eo = edgeBase(name);                                              // 描边昼间衰减
   edgeMat.opacity=eo; edgeMatG.opacity=eo*.95;
   // 地面石材分档着色：昼=青砖本色，晨=暖灰，夜=冷蓝压暗（保住数字孪生夜景）
   const gc = name==='day' ? 0xd6d0c4 : (name==='dawn' ? 0x8d8189 : 0x2a3a55);   // 昼档留一点余量，别顶满
@@ -2728,6 +2777,17 @@ function applyLights(name){
     clearTimeout(an2._t); an2._t=setTimeout(()=>an2.classList.remove('show'),3400); }
   void fd.offsetWidth; fd.style.transition='opacity .9s ease'; fd.style.opacity='0';
   renderer.shadowMap.needsUpdate=true;   // 光位变了：重烘焙静态影子
+}
+// 阴影相机沿长城走向量化跟随：正交取景只有 ±560，而城墙 x∈[-1160,1160]，
+// 半条墙落在贴图外会被钳到边缘纹素（要么没影要么糊一条假影）。按 400m 分档，只在跨档那一帧重烘焙。
+function updateShadowFollow(){
+  const want = activeWorld==='wall' ? Math.round(camera.position.x/400)*400 : 0;
+  if(want===shadowOff) return;
+  shadowOff=want;
+  const L=LIGHTS[lightMode];
+  sun.position.set(L.sunPos[0]+want,L.sunPos[1],L.sunPos[2]);
+  sun.target.position.set(want,0,0);
+  renderer.shadowMap.needsUpdate=true;
 }
 document.querySelectorAll('[data-light]').forEach(b=>
   b.addEventListener('click',()=>applyLights(b.dataset.light)));
@@ -2780,18 +2840,22 @@ async function kioskLoop(my){
     await wait(4600); if(!alive())return;
     window.__errs.length=0;   // 每圈清零：watchdog 只盯本圈新增错误
     const myWorld=activeWorld, list=WORLDS[myWorld].pois;
+    // 幕次锚点按名字找下标：写死数字的话，删一条标注就会点空并抛错，进而被看门狗判成故障而反复重载
+    const iOpen=list.findIndex(p=>p.name==='午门'), iJingshan=list.findIndex(p=>p.name==='景山万春亭');
     for(let i=0;i<list.length;i++){
       if(!alive()||activeWorld!==myWorld) break;   // 观众切换世界 → 本圈作罢
       if(performance.now()-lastActive<8000){ i--; await wait(2000); continue; }  // 观众操作中 → 停留当前视点暂缓（不跳过）
-      if(myWorld==='gugong'&&i===18){ document.querySelector('[data-light="dawn"]').click(); }  // 三幕：景山压轴切晨光金顶
-      else if(myWorld==='gugong'&&i===0){ document.querySelector('[data-light="night"]').click(); }  // 开篇夜色
+      if(myWorld==='gugong'&&i===iJingshan){ document.querySelector('[data-light="dawn"]').click(); }  // 三幕：景山压轴切晨光金顶
+      else if(myWorld==='gugong'&&i===iOpen){ document.querySelector('[data-light="night"]').click(); } // 开篇夜色
       openPOI(i);
       await wait(7600); if(!alive())return;
     }
     if(!alive())return;
     setWorld(activeWorld==='gugong'?'wall':'gugong');
     if(activeWorld==='wall'){ applyLights('night');   // 第四幕：长城夜巡（烽火+亮窗）
-      openPOI(8); await wait(5200); }                 // 压轴：烽火台火盆特写
+      const iBrazier=WORLDS.wall.pois.findIndex(p=>p.name==='烽火台火盆');
+      if(iBrazier>=0) openPOI(iBrazier);              // 压轴：烽火台火盆特写
+      await wait(5200); }
     await wait(5200);
   }
 }
@@ -2803,7 +2867,10 @@ function enterKiosk(){
   try{ document.documentElement.requestFullscreen?.().catch(()=>{}); }catch(e){}
   applyLights('night');
   setWorld('gugong');
-  kioskLoop(my);
+  kioskLoop(my).catch(e=>{        // 循环内任何抛错都不得变成 unhandledrejection：那会被看门狗记账并触发重载循环
+    console.error('kiosk loop stopped:',e);
+    if(kioskSeq===my){ kiosk=false; document.body.classList.remove('kiosk'); }
+  });
 }
 function exitKiosk(){
   kiosk=false; kioskSeq++;
@@ -3030,7 +3097,8 @@ function toggleState(k){
 }
 function setXray(on){
   solidMats.forEach(m=>{ m.transparent=on; m.opacity=on?.07:1; m.depthWrite=!on; m.needsUpdate=true; });
-  edgeMat.opacity=on?.95:.42; edgeMatG.opacity=on?.85:.4;
+  const eo=edgeBase();                              // 关线框回到当前光照档位的描边基准，不是写死的夜景值
+  edgeMat.opacity=on?.95:eo; edgeMatG.opacity=on?.85:eo*.95;
 }
 renderer.domElement.addEventListener('pointerdown',()=>{
   if(fps.on) return;
@@ -3102,7 +3170,21 @@ addEventListener('keyup',e=>{ fps.keys.delete(e.key.toLowerCase()); });
 /* ═══════════ 主循环 ═══════════ */
 const clock=new THREE.Clock();
 let growing=false, growT=0;
-let frames=0, fpsT=0, quality=2, qCooldown=0;
+let frames=0, fpsT=0, quality=2, qCooldown=0, goodT=0;
+const BASE_PR=Math.min(devicePixelRatio,1.5);
+const LOW_PR=Math.min(1.15,BASE_PR);   // 1080p 展陈屏 DPR=1：降档值必须不高于原生，否则"降档"反尔多渲 15% 像素
+function applyQuality(){
+  const pr=quality===2?BASE_PR:LOW_PR;
+  renderer.setPixelRatio(pr); composer.setPixelRatio(pr);
+  const sh=quality>0&&state.shadow;
+  if(renderer.shadowMap.enabled!==sh){
+    renderer.shadowMap.enabled=sun.castShadow=sh;
+    scene.traverse(o=>{ if(o.material)(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.needsUpdate=true); });
+    // 「光影」按钮跟随实际渲染状态：否则自动关影后按钮仍亮着，观众以为开关失灵
+    document.querySelector('[data-toggle="shadow"]').classList.toggle('on',sh);
+  }
+  renderer.shadowMap.needsUpdate=true;
+}
 const stFps=document.getElementById('st-fps'), stTri=document.getElementById('st-tri'),
       stCall=document.getElementById('st-call'), stCam=document.getElementById('st-cam');
 const tmpV=new THREE.Vector3();
@@ -3111,6 +3193,7 @@ function animate(){
   requestAnimationFrame(animate);
   lastRafT=performance.now();
   const dt=Math.min(clock.getDelta(),.05), t=clock.elapsedTime;
+  updateShadowFollow();   // 先校正阴影取景再渲染：切世界的那一帧不会带着上一个世界的偏移
 
   if(growing){
     growT+=dt/1.5;
@@ -3213,7 +3296,9 @@ function animate(){
     fx.crowd.instanceMatrix.needsUpdate=true;
   }
   // 格扇窗光：夜档分相位呼吸（各殿微差），晨档微光，昼档熄
-  const latGlow = lightMode==='night' ? .9+.18*Math.sin(t*1.1) : (lightMode==='dawn' ? .22 : 0);
+  // 峰值必须压在 bloom 阈值 0.8 以下：emissiveMap 复用格扇图，图上金线本身接近 1.0，
+  // 原来 latGlow 峰值 1.08 会把金线推到远超 1.0，檐下一片糊成白色光团
+  const latGlow = lightMode==='night' ? .30+.07*Math.sin(t*1.1) : (lightMode==='dawn' ? .12 : 0);
   for(let i=0;i<LATTICE_GLOW.length;i++)
     LATTICE_GLOW[i].emissiveIntensity=latGlow*(.78+.22*Math.sin(t*1.1+i*1.73));
   for(let i=0;i<WIND.length;i++) WIND[i].uniforms.uT.value=t;            // 树冠风摆
@@ -3300,7 +3385,8 @@ function animate(){
   composer.render();
 
   frames++; fpsT+=dt;
-  if(fpsT>=.5){
+  if(document.hidden){ frames=0; fpsT=0; }   // 后台 rAF 被节流到 ~1Hz，样本会误判成低帧而触发降档，直接丢弃
+  else if(fpsT>=.5){
     const val=Math.round(frames/fpsT);
     stFps.textContent=val;
     stTri.textContent=renderer.info.render.triangles.toLocaleString();
@@ -3310,16 +3396,11 @@ function animate(){
     const dirTxt=dirs[((Math.round(hd/(Math.PI/4))%8)+8)%8];
     stCam.textContent=`X ${camera.position.x.toFixed(0)} · Y ${camera.position.y.toFixed(0)} · Z ${camera.position.z.toFixed(0)} · 朝${dirTxt}`;
     frames=0; fpsT=0;
-    // 自适应降档：持续低帧自动减负（高配机不受影响）
+    // 自适应画质：低帧减负、恢复后回补（此前只降不升，展陈机跑一天会永久停在无阴影低分辨率档）
     if(qCooldown>0) qCooldown-=.5;
-    if(val<30&&qCooldown<=0&&quality>0){
-      quality--; qCooldown=4;
-      if(quality===1){ renderer.setPixelRatio(1.15); composer.setPixelRatio(1.15); }
-      else if(quality===0){
-        renderer.shadowMap.enabled=false; sun.castShadow=false;
-        scene.traverse(o=>{ if(o.material)(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.needsUpdate=true); });
-      }
-    }
+    else if(val<30&&quality>0){ quality--; qCooldown=8; goodT=0; applyQuality(); }
+    else if(quality<2){ goodT+=.5; if(goodT>=25&&val>=50){ quality++; qCooldown=12; goodT=0; applyQuality(); } }
+    else goodT=0;
   }
   renderer.info.reset();
 }
@@ -3337,17 +3418,12 @@ window.__finishGrow=()=>{ growing=false; city.scale.y=1; clock.getDelta(); rende
 /* ═══════════ 入场 ═══════════ */
 buildMarkers(); rebuildViewButtons();
 {
-  const fillEl=document.getElementById('ld-fill'), msg=document.getElementById('ld-msg');
-  let p=0;
-  const iv=setInterval(()=>{ p=Math.min(p+8+Math.random()*14,88); fillEl.style.width=p+'%'; },160);
+  await stage('构建完成 · 数字遗产已就绪',100);   // 让 100% 这一帧真的被画出来，再揭幕
   setTimeout(()=>{
-    clearInterval(iv); fillEl.style.width='100%'; msg.textContent='构建完成 · 数字遗产已就绪';
-    setTimeout(()=>{
-      document.getElementById('loader').classList.add('done');
-      growing=true;
-      const v=WORLDS.gugong.views['全景']; flyTo(v.p,v.t,3400);
-    },500);
-  },1100);
+    document.getElementById('loader').classList.add('done');
+    growing=true;
+    const v=WORLDS.gugong.views['全景']; flyTo(v.p,v.t,3400);
+  },420);
 }
 </script>
 </body>
