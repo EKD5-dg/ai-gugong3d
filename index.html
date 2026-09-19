@@ -1869,11 +1869,12 @@ function terrainH(x,z){
   // 两条支脉，让群山更有层次
   h+=42*Math.exp(-((dz+330)**2)/(2*130*130))*Math.max(0,Math.sin(x*.003+1.2));
   h+=36*Math.exp(-((dz-360)**2)/(2*120*120))*Math.max(0,Math.sin(x*.0026+4.2));
-  // 侧翼自然起伏：fBm 大尺度山体 + 脊状冲沟，距脊越远越野（脊线 ±25 内保持平稳，城墙/建筑地基不受扰）
+  // 侧翼自然起伏：沿山脊方向（x）拉长、横向收窄。
+  // 各向同性的 fbm 在 7.6m 网格上只会鼓成一堆菱形枕头——绸缎感的真正来源是这里，不是缺细节。
   const flank=Math.min(1,Math.max(0,(lat-25)/80));
-  h+=flank*((fbm(x*.004+31.7,z*.004+11.2,5)-.5)*70+(ridged(x*.02-z*.006,z*.013,3)-.5)*24);
-  // 全域细噪声：山脊也参与，消除光滑"果冻感"
-  h+=(fbm(x*.02+7.7,z*.02+3.1,3)-.5)*9;
+  h+=flank*((fbm(x*.0013+31.7,z*.0058+11.2,5)-.5)*70+(ridged(x*.006-z*.012,z*.021,3)-.5)*24);
+  // 全域细噪声：山脊也参与，消除光滑"果冻感"（波长须远大于网格，否则又被采成枕头）
+  h+=(fbm(x*.011+7.7,z*.011+3.1,3)-.5)*9;
   // 边缘沉入地台面以下（地台顶 -4 → 收到 -4.5，地形与地台融为一体，外圈不再有悬空平原感）
   const fx=Math.min(1,Math.max(0,(1300-Math.abs(x))/80));
   const fz=Math.min(1,Math.max(0,(850-Math.abs(z))/140));
@@ -1956,16 +1957,41 @@ function terrainH(x,z){
   }
   tgeo.setAttribute('color',new THREE.BufferAttribute(colors,3));
   tgeo.computeVertexNormals();
-  // 微观起伏法线：消除大面积地形"绸缎"平滑感
-  const texTN=(()=>{const c=document.createElement('canvas');c.width=c.height=256;
-    const g=c.getContext('2d');g.fillStyle='rgb(128,128,255)';g.fillRect(0,0,256,256);
-    for(let i=0;i<9000;i++){const v=128+((Math.random()*56)|0)-28;
-      g.fillStyle=`rgba(${v},${v},255,.55)`;
-      g.fillRect(Math.random()*256,Math.random()*256,2+Math.random()*5,2+Math.random()*5);}
-    const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(150,110);return t;})();
+  // ── 岩石细节贴图 ──
+  // 地形此前只有一张随机点法线图，近看没有任何岩面结构，所以整片读成揉皱的绸缎。
+  // 随机点不能平铺（接缝会被 130× 重复放大成网格），故用周期性值噪声按整数频率生成，保证无缝。
+  const RP=32;   // 基准晶格周期；平铺域取 [0,RP)，倍频必须是整数才能保持无缝
+  const phash=(ix,iz,p)=>{ ix=((ix%p)+p)%p; iz=((iz%p)+p)%p;
+    const n=Math.sin(ix*127.1+iz*311.7)*43758.5453; return n-Math.floor(n); };
+  const pnoise=(x,z,p)=>{ const ix=Math.floor(x),iz=Math.floor(z),tx=x-ix,tz=z-iz;
+    const sx=tx*tx*(3-2*tx),sz=tz*tz*(3-2*tz);
+    const a=phash(ix,iz,p),b=phash(ix+1,iz,p),c=phash(ix,iz+1,p),d=phash(ix+1,iz+1,p);
+    return a+(b-a)*sx+(c-a)*sz+(a-b-c+d)*sx*sz; };
+  const pfbm=(u,v,fq,oct)=>{ let s=0,amp=.5,f=1;
+    for(let k=0;k<oct;k++){ s+=amp*pnoise(u*f,v*f,RP*fq*f); amp*=.5; f*=2; } return s; };
+  const pridge=(u,v,fq,oct)=>{ let s=0,amp=.5,f=1;
+    for(let k=0;k<oct;k++){ s+=amp*(1-Math.abs(2*pnoise(u*f,v*f,RP*fq*f)-1)); amp*=.5; f*=2; } return s; };
+  const rockCanvas=(()=>{ const S=512,c=document.createElement('canvas'); c.width=c.height=S;
+    const g=c.getContext('2d'), im=g.createImageData(S,S), d=im.data;
+    for(let y=0;y<S;y++)for(let x=0;x<S;x++){
+      const u=x/S*RP, v=y/S*RP, i4=(y*S+x)*4;
+      let L=226+(pfbm(u,v,1,4)-.5)*88;                    // 基岩多尺度斑驳（均值压亮：它是乘在顶点色上的调制图）
+      L-=Math.max(0,pridge(u+7,v+3,2,3)-.80)/.20*74;      // 节理裂隙：脊状噪声贴峰处切细暗线
+      L+=Math.max(0,1-Math.abs(pridge(u+29,v+13,3,2)-.90)/.05)*30;   // 矿物脉：窄亮带
+      L+=(phash(x,y,4096)-.5)*12;                          // 砂粒感，只有贴近才看得见
+      const val=Math.max(118,Math.min(255,L))|0;
+      d[i4]=val; d[i4+1]=(val*.995)|0; d[i4+2]=(val*.972)|0; d[i4+3]=255;   // 极轻的暖偏
+    }
+    g.putImageData(im,0,0); return c; })();
+  const texRock=new THREE.CanvasTexture(rockCanvas);
+  texRock.wrapS=texRock.wrapT=THREE.RepeatWrapping; texRock.colorSpace=THREE.SRGBColorSpace;
+  texRock.anisotropy=8; texRock.repeat.set(130,85);       // 一图约 20m
+  const texRockN=makeNormalMap(rockCanvas,2.6);
+  texRockN.repeat.copy(texRock.repeat);
   const terrain=new THREE.Mesh(tgeo,new THREE.MeshStandardMaterial({vertexColors:true,roughness:1,
-    emissive:0x10151d,emissiveIntensity:.75,
-    normalMap:texTN,normalScale:new THREE.Vector2(.6,.6)}));
+    color:new THREE.Color(1.12,1.12,1.12),               // 抵掉细节图均值带来的整体压暗（>1 只能用 Color 实例，传数字会被当 hex）
+    map:texRock,normalMap:texRockN,normalScale:new THREE.Vector2(.85,.85),
+    emissive:0x10151d,emissiveIntensity:.75}));
   fx.terrainMat=terrain.material;
   gw.add(terrain);
   // 山坡散树（双实例化：树干+皱冠，两处 draw call，随机姿态与色相）
