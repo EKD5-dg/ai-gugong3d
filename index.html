@@ -405,27 +405,50 @@ function makeNormalMap(srcCanvas,strength){
   og.putImageData(img,0,0);
   const nt=new THREE.CanvasTexture(out);
   nt.wrapS=nt.wrapT=THREE.RepeatWrapping;
+  nt.anisotropy=8;   // 与母图同抗斜视（母图 canvasTex 已设 8，此前只有法线/粗糙图漏了）
   return nt;
 }
-// 城砖（红色宫墙砖：明度差 + 缝阴 + 崩角 + 白碱渍做旧）
-const texBrick=canvasTex(512,512,(g,w,h)=>{
-  g.fillStyle='#5a1219'; g.fillRect(0,0,w,h);
+// 朱红宫墙：抹灰刷朱（真实墙面为灰浆罩面，砖线只在灰浆下隐约可辨）
+// 近看是"斑驳红墙"而非"红砖盒子"——明度靠抹痕/雨痕/泛碱/剥落撑起，砖缝压到 5% 对比
+const texRedWall=canvasTex(512,512,(g,w,h)=>{
+  g.fillStyle='rgb(142,40,42)'; g.fillRect(0,0,w,h);
+  // 抹灰罩面的大面积明暗起伏（一坡一色）
+  for(let i=0;i<170;i++){
+    const x=Math.random()*w, y=Math.random()*h, r=22+Math.random()*74;
+    const up=Math.random()<.5, a=.035+Math.random()*.055;
+    const grd=g.createRadialGradient(x,y,0,x,y,r);
+    grd.addColorStop(0,up?`rgba(216,120,96,${a})`:`rgba(46,10,12,${a})`);
+    grd.addColorStop(1,'rgba(0,0,0,0)');
+    g.fillStyle=grd; g.beginPath(); g.arc(x,y,r,0,7); g.fill();
+  }
+  // 隐约砖线：仅够在贴近时读出砌体，中距完全融为墙面
   const bh=64,bw=128;
   for(let y=0;y<h/bh;y++){
     const off=(y%2)*bw/2;
-    for(let x=-1;x<w/bw+1;x++){
-      const l=.82+Math.random()*.34;
-      g.fillStyle=`rgb(${(150*l)|0},${(36*l)|0},${(46*l)|0})`;
-      g.fillRect(x*bw+off+2,y*bh+2,bw-4,bh-4);
-      g.fillStyle='rgba(255,215,175,.06)'; g.fillRect(x*bw+off+2,y*bh+2,bw-4,4);
-      g.strokeStyle='rgba(0,0,0,.2)'; g.lineWidth=1.5; g.strokeRect(x*bw+off+2.5,y*bh+2.5,bw-5,bh-5);
-      if(Math.random()<.1){ g.fillStyle='rgba(0,0,0,.18)';
-        g.fillRect(x*bw+off+4+Math.random()*(bw-20),y*bh+4+Math.random()*(bh-14),4+Math.random()*5,3+Math.random()*3); }
-      if(Math.random()<.07){ g.fillStyle='rgba(214,208,192,.06)';
-        g.fillRect(x*bw+off+6+Math.random()*(bw-30),y*bh+bh*.3,10,18); }
-    }
+    g.fillStyle='rgba(28,6,8,.07)'; g.fillRect(0,y*bh+bh-3,w,3);
+    for(let x=-1;x<w/bw+1;x++) g.fillRect(x*bw+off+bw-3,y*bh+1,3,bh-4);
+    if(Math.random()<.22){ g.fillStyle='rgba(232,214,190,.05)'; g.fillRect(0,y*bh+bh-3,w,1.5); }
   }
-},3.2);
+  // 泛碱与灰浆流坠
+  for(let i=0;i<9;i++){
+    g.fillStyle='rgba(206,198,180,.055)';
+    g.fillRect(Math.random()*w, Math.random()*h*.8, 8+Math.random()*22, 16+Math.random()*40);
+  }
+  // 雨痕（自上而下的暗挂流）
+  for(let i=0;i<26;i++){
+    const x=Math.random()*w, y0=Math.random()*h*.35, len=h*.25+Math.random()*h*.6;
+    g.fillStyle=`rgba(24,6,8,${.05+Math.random()*.07})`; g.fillRect(x,y0,1.5+Math.random()*4,len);
+  }
+  // 抹灰剥落露出内层灰泥
+  for(let i=0;i<5;i++){
+    const x=Math.random()*w, y=h*.15+Math.random()*h*.8, r=6+Math.random()*13;
+    g.fillStyle='rgba(146,138,124,.16)';
+    g.beginPath(); g.ellipse(x,y,r,r*(.6+Math.random()*.9),Math.random()*3,0,7); g.fill();
+    g.fillStyle='rgba(30,10,10,.14)';
+    g.beginPath(); g.ellipse(x+r*.3,y+r*.3,r*.62,r*.5,Math.random()*3,0,7); g.fill();
+  }
+  // 墙脚/墙顶不做整图渐变——纹理要竖向平铺，渐变会在地台与城台上切出横向条带
+},0.7);
 // 灰砖（长城）
 const texGWBrick=canvasTex(512,512,(g,w,h)=>{
   g.fillStyle='#2f353b'; g.fillRect(0,0,w,h);
@@ -440,22 +463,22 @@ const texGWBrick=canvasTex(512,512,(g,w,h)=>{
     }
   }
 });
-// 汉白玉石条（斜向云纹走向 + 错缝）
+// 汉白玉：暖白偏奶，不是冷灰（原 cool grey 让台基与券脸在昼档看着像水泥）
 const texStone=canvasTex(512,512,(g,w,h)=>{
-  g.fillStyle='#7e868d'; g.fillRect(0,0,w,h);
+  g.fillStyle='#7d786f'; g.fillRect(0,0,w,h);
   g.strokeStyle='rgba(255,255,255,.05)'; g.lineWidth=1;
   for(let i=-h;i<w;i+=17){ g.beginPath(); g.moveTo(i,0); g.lineTo(i+h,h); g.stroke(); }
-  g.strokeStyle='rgba(30,40,50,.06)';
+  g.strokeStyle='rgba(50,44,38,.06)';
   for(let i=-h;i<w;i+=23){ g.beginPath(); g.moveTo(i,h); g.lineTo(i+h,0); g.stroke(); }
   const bh=84;
   for(let y=0;y<h/bh;y++){
     const off=(y%2)*106;
     for(let x=-1;x<w/212+2;x++){
       const l=.88+Math.random()*.22;
-      g.fillStyle=`rgb(${(186*l)|0},${(192*l)|0},${(198*l)|0})`;
+      g.fillStyle=`rgb(${(198*l)|0},${(192*l)|0},${(178*l)|0})`;
       g.fillRect(x*212+off+2,y*bh+2,208,bh-4);
-      g.fillStyle='rgba(30,40,50,.25)'; g.fillRect(x*212+off+2,y*bh+bh-5,208,3);
-      g.fillStyle='rgba(255,255,255,.05)'; g.fillRect(x*212+off+2,y*bh+2,208,3);
+      g.fillStyle='rgba(50,42,34,.25)'; g.fillRect(x*212+off+2,y*bh+bh-5,208,3);
+      g.fillStyle='rgba(255,252,242,.06)'; g.fillRect(x*212+off+2,y*bh+2,208,3);
     }
   }
 },1.6);
@@ -471,41 +494,36 @@ const texFloor=canvasTex(512,512,(g,w,h)=>{
     g.fillStyle='rgba(0,0,0,.22)'; g.fillRect(x*s+3,y*s+s-9,s-6,6);
   }
 });
-// 琉璃瓦（每行筒瓦一片片清晰可见）
+// 琉璃瓦：筒瓦是顺坡通长的垄（贴图 x=沿檐口、y=顺坡向下），故为竖向条带。
+// 原"逐行错缝半圆"是瓦当视角的画法，铺到坡面上会读成人字鱼鳞
 const texRoof=canvasTex(512,512,(g,w,h)=>{
-  g.fillStyle='#6b5220'; g.fillRect(0,0,w,h);
-  const rh=64;
-  for(let y=0;y<h/rh+1;y++){
-    const off=(y%2)*32;
-    for(let x=-1;x<w/64+2;x++){
-      const l=.8+Math.random()*.38;
-      const grd=g.createLinearGradient(0,y*rh,0,y*rh+rh);
-      grd.addColorStop(0,`rgb(${(197*l)|0},${(157*l)|0},${(86*l)|0})`);
-      grd.addColorStop(.62,`rgb(${(151*l)|0},${(115*l)|0},${(54*l)|0})`);
-      grd.addColorStop(1,`rgb(${(104*l)|0},${(78*l)|0},${(34*l)|0})`);
-      g.fillStyle=grd;
-      g.beginPath(); g.arc(x*64+off+32,y*rh+rh,31,Math.PI,0); g.fill();
-    }
-    g.fillStyle='rgba(35,22,4,.6)'; g.fillRect(0,y*rh+rh-5,w,5);
-    for(let x2=-1;x2<w/64+2;x2++){ g.fillStyle='#d8ae55'; g.beginPath(); g.arc(x2*64+off+32,y*rh+rh-9,7,Math.PI,0); g.fill(); }   // 瓦当
+  g.fillStyle='#6e5522'; g.fillRect(0,0,w,h);
+  const pw=128;                                  // 每图 4 垄 = 1.25m 垄距；再密会在顺垄视线上打出人字拍纹
+  for(let x=-1;x<w/pw+1;x++){
+    const l=.86+Math.random()*.26;                       // 逐垄琉璃色差
+    const grd=g.createLinearGradient(x*pw,0,(x+1)*pw,0);
+    grd.addColorStop(0,   `rgb(${(118*l)|0},${(92*l)|0},${(40*l)|0})`);   // 垄左阴
+    grd.addColorStop(.30, `rgb(${(206*l)|0},${(164*l)|0},${(84*l)|0})`);  // 筒瓦受光脊
+    grd.addColorStop(.60, `rgb(${(172*l)|0},${(133*l)|0},${(62*l)|0})`);
+    grd.addColorStop(1,   `rgb(${(110*l)|0},${(85*l)|0},${(37*l)|0})`);   // 右垄沟（提亮，压低对比=压住混叠幅度）
+    g.fillStyle=grd; g.fillRect(x*pw,0,pw,h);
+    // 不做逐节搭接横纹：斜视角下短横纹会混成鱼骨纹，坡面只留通长垄沟
   }
+  g.fillStyle='rgba(255,228,172,.05)'; g.fillRect(0,0,w,h*.1);
+  g.fillStyle='rgba(22,15,4,.07)';     g.fillRect(0,h*.88,w,h*.12);
 });
 // 灰瓦（长城城楼）
 const texRoofG=canvasTex(512,512,(g,w,h)=>{
-  g.fillStyle='#343b42'; g.fillRect(0,0,w,h);
-  const rh=64;
-  for(let y=0;y<h/rh+1;y++){
-    const off=(y%2)*32;
-    for(let x=-1;x<w/64+2;x++){
-      const l=.8+Math.random()*.34;
-      const grd=g.createLinearGradient(0,y*rh,0,y*rh+rh);
-      grd.addColorStop(0,`rgb(${(128*l)|0},${(138*l)|0},${(148*l)|0})`);
-      grd.addColorStop(.65,`rgb(${(88*l)|0},${(96*l)|0},${(104*l)|0})`);
-      grd.addColorStop(1,`rgb(${(54*l)|0},${(60*l)|0},${(66*l)|0})`);
-      g.fillStyle=grd;
-      g.beginPath(); g.arc(x*64+off+32,y*rh+rh,31,Math.PI,0); g.fill();
-    }
-    g.fillStyle='rgba(10,14,18,.6)'; g.fillRect(0,y*rh+rh-5,w,5);
+  g.fillStyle='#2c333a'; g.fillRect(0,0,w,h);
+  const pw=64;
+  for(let x=-1;x<w/pw+1;x++){
+    const l=.84+Math.random()*.26;
+    const grd=g.createLinearGradient(x*pw,0,(x+1)*pw,0);
+    grd.addColorStop(0,   `rgb(${(44*l)|0},${(50*l)|0},${(56*l)|0})`);
+    grd.addColorStop(.30, `rgb(${(142*l)|0},${(152*l)|0},${(162*l)|0})`);
+    grd.addColorStop(.58, `rgb(${(104*l)|0},${(113*l)|0},${(122*l)|0})`);
+    grd.addColorStop(1,   `rgb(${(38*l)|0},${(43*l)|0},${(48*l)|0})`);
+    g.fillStyle=grd; g.fillRect(x*pw,0,pw,h);
   }
 });
 // 门钉金钉红门
@@ -520,26 +538,31 @@ const texDoorStud=canvasTex(512,768,(g,w,h)=>{
     g.fillStyle=r; g.beginPath(); g.arc(x,y,16,0,7); g.fill();
   }
 });
-// 广场砖铺装（中央御路浅色石带明暗拼贴）
+// 广场墁砖：青砖十字对缝，每图 8×8 砖、单砖约 0.6m（真实尺度）
+// 明暗由砖面磨痕与个体色差撑起；不再画中央浅色带（那是重复平铺后变成多条竖纹的根因）
 const texPlaza=canvasTex(512,512,(g,w,h)=>{
-  g.fillStyle='#131d33'; g.fillRect(0,0,w,h);
-  const s=128;
+  g.fillStyle='#3e3a35'; g.fillRect(0,0,w,h);                       // 灰浆缝
+  const s=64;
   for(let y=0;y<h/s;y++)for(let x=0;x<w/s;x++){
-    const l=.88+Math.random()*.24;
-    const miss=Math.random()<.05;                            // 4% 缺砖（修补痕）
-    g.fillStyle=miss?'rgba(8,12,20,.7)':`rgb(${(24*l)|0},${(35*l)|0},${(60*l)|0})`;
-    g.fillRect(x*s+3,y*s+3,s-6,s-6);
-    g.fillStyle='rgba(130,190,230,.05)'; g.fillRect(x*s+3,y*s+3,s-6,3);
+    const l=.93+Math.random()*.13, hd=(Math.random()-.5)*9;      // 相邻砖明度差压到 13%，避免打格
+    g.fillStyle=`rgb(${(134*l+hd)|0},${(129*l)|0},${(121*l-hd)|0})`;
+    g.fillRect(x*s+2,y*s+2,s-4,s-4);
+    g.fillStyle='rgba(255,252,244,.04)'; g.fillRect(x*s+2,y*s+2,s-4,1.5);   // 砖面上沿受光
+    g.fillStyle='rgba(0,0,0,.10)';       g.fillRect(x*s+2,y*s+s-5,s-4,3);   // 砖面下沿阴影
+    for(let k=0;k<3;k++){                                                  // 磨痕
+      g.strokeStyle=`rgba(${Math.random()<.5?'255,255,250':'20,16,14'},.05)`; g.lineWidth=1;
+      const y0=y*s+8+Math.random()*(s-16);
+      g.beginPath(); g.moveTo(x*s+6,y0); g.lineTo(x*s+s-6,y0+(Math.random()-.5)*7); g.stroke();
+    }
+    if(Math.random()<.06){ g.fillStyle='rgba(28,24,20,.22)';               // 坑缺
+      g.beginPath(); g.arc(x*s+8+Math.random()*(s-16),y*s+8+Math.random()*(s-16),2+Math.random()*4,0,7); g.fill(); }
   }
-  for(let k2=0;k2<7;k2++){                                   // 暗色修补斑
-    g.fillStyle='rgba(6,10,18,.4)';
-    g.fillRect(Math.random()*(w-80), Math.random()*(h-60), 40+Math.random()*80, 26+Math.random()*52);
+  for(let k2=0;k2<5;k2++){                                                 // 大面积浅淡积垢（低对比，不再是一块块黑斑）
+    const gr=g.createRadialGradient(Math.random()*w,Math.random()*h,4,Math.random()*w,Math.random()*h,60+Math.random()*90);
+    gr.addColorStop(0,'rgba(24,22,18,.13)'); gr.addColorStop(1,'rgba(0,0,0,0)');
+    g.fillStyle=gr; g.fillRect(0,0,w,h);
   }
-  g.fillStyle='rgba(150,175,205,.09)'; g.fillRect(w*.46,0,w*.08,h);   // 中轴磨损带
-  g.fillStyle='rgba(178,196,220,.18)'; g.fillRect(w*.40,0,w*.20,h);   // 御路浅色带
-  g.strokeStyle='rgba(178,196,220,.30)'; g.lineWidth=3;
-  g.strokeRect(w*.40,0,w*.20,h);
-});
+},1.5);
 // 长城马道浅灰石板（自然不规则石板，非方格玻璃）
 const texPave=canvasTex(512,512,(g,w,h)=>{
   g.fillStyle='#394047'; g.fillRect(0,0,w,h);
@@ -670,6 +693,7 @@ function std(o){
       g2.putImageData(im,0,0);
       const rt=new THREE.CanvasTexture(cv);
       rt.wrapS=rt.wrapT=THREE.RepeatWrapping;
+      rt.anisotropy=8;
       _roughCache[uid]=rt;
     }
     o.roughnessMap=_roughCache[uid];
@@ -679,17 +703,17 @@ function std(o){
 }
 
 function matWith(key,make){ if(matCache[key])return matCache[key]; matCache[key]=make(); return matCache[key]; }
-// 不同尺寸的墙体用不同砖缝密度，保证每块砖比例一致
-function brickMat(rx,ry){ return matWith('b'+rx+'_'+ry,()=>std({map:rep(texBrick,rx,ry),roughness:.8})); }
+// 不同尺寸的墙体用不同平铺密度，保证抹痕与隐砖线的比例一致
+function redWallMat(rx,ry){ return matWith('r'+rx+'_'+ry,()=>std({map:rep(texRedWall,rx,ry),roughness:.86})); }
 function gwBrickMat(rx,ry){ return matWith('g'+rx+'_'+ry,()=>std({map:rep(texGWBrick,rx,ry),roughness:.85})); }
 function stoneMat(rx,ry){ return matWith('s'+rx+'_'+ry,()=>std({map:rep(texStone,rx,ry),roughness:.88})); }
 function roofMat(key,tex,rx,ry,glow){ return matWith(key,()=>std({map:rep(tex,rx,ry),roughness:.52,metalness:.22,emissive:glow})); }
 
-const matWall    = brickMat(4,2);
-const matWallBig = brickMat(12,2.5);
-const matWallWarm= matWith('wallWarm',()=>std({map:rep(texBrick,4,2),color:0xc4958a,roughness:.82})); // 后宫偏暖
-const matWallMuted=matWith('wallMuted',()=>std({map:rep(texBrick,3,1.5),color:0xa8877a,roughness:.88})); // 六宫偏灰
-const matWallLong= brickMat(40,2.2);
+const matWall    = redWallMat(4,2);
+const matWallBig = redWallMat(12,2.5);
+const matWallWarm= matWith('wallWarm',()=>std({map:rep(texRedWall,4,2),color:0xc4958a,roughness:.88})); // 后宫偏暖
+const matWallMuted=matWith('wallMuted',()=>std({map:rep(texRedWall,3,1.5),color:0xa8877a,roughness:.9})); // 六宫偏灰
+const matWallLong= redWallMat(40,2.2);
 const matGWWall  = gwBrickMat(4,2);
 const matGWTower = gwBrickMat(3,2.4);
 const matGWLong  = gwBrickMat(40,2.4);
@@ -700,6 +724,22 @@ const matGold    = roofMat('gold',texRoof,1,1,0x7a5a28); matGold.side=THREE.Doub
 const matGoldG   = roofMat('goldg',texRoofG,1,1,0x11151a); matGoldG.side=THREE.DoubleSide;
 const matGoldAmber=roofMat('amber',texRoof,1,1,0x6a4a20); matGoldAmber.side=THREE.DoubleSide; matGoldAmber.color=new THREE.Color(0xd4a860); matGoldAmber.normalScale=new THREE.Vector2(1.15,1.15); // 后宫偏琥珀
 const matGoldDark= std({color:0x93702c,roughness:.55,metalness:.3});
+// 斜收四坡台（hipFrustumGeo）的 UV 是"每面 0..1"，直接套 1×1 琉璃会把瓦垄拉成数米大鳞。
+// 按面宽换算平铺密度；实测该带掠射角下垄距需 ≥4m 才不起拍纹，故比庑殿主坡粗
+const ROOF_FIT=[];
+function roofFit(base,tex,rx,ry){
+  return matWith('rf'+base.uuid+'_'+rx.toFixed(1)+'_'+ry.toFixed(1),()=>{
+    const m=std({map:rep(tex,rx,ry),roughness:.52,metalness:.22,side:THREE.DoubleSide,
+      emissive:base.emissive.getHex()});
+    m.normalScale=base.normalScale.clone(); m.userData.src=base; ROOF_FIT.push(m); return m;});
+}
+// 斜收四坡台的顶面是一整块水平台面：沿用"每面 0..1"的 UV 会把瓦垄压到亚米级、在掠射角打出拍纹。
+// 重檐下檐的顶面是外露的，取垄脊一处纯色
+function flattenTopUV(mesh){
+  const uv=mesh.geometry.attributes.uv, n=uv.count;
+  for(let i=n-4;i<n;i++) uv.setXY(i,.30,.5);
+  uv.needsUpdate=true;
+}
 const matWallDark= std({color:0x571219,roughness:.85});
 const matMarble  = stoneMat(4,4);
 const matMarbleBig=stoneMat(5,2);
@@ -752,12 +792,28 @@ function box(parent,w,h,d,x,y,z,m,edge=true){
 function hipRoofGeo(w,d,h,ridge=.58,curve=2.05,N=8){
   const rw=(w/2)*ridge, pos=[],uv=[],idx=[];
   const liftAt=s=>.009*(w+d)*Math.pow(1-s,2.2);
-  const ring=(s)=>{
+  const flAt=s=>1+.05*Math.pow(1-s,3);
+  const cxAt=s=>(w/2+(rw-w/2)*s)*flAt(s);
+  const czAt=s=>(d/2*(1-s))*flAt(s);
+  // 瓦垄必须"垂直檐口、顺坡而下"：四坡共用世界平面 UV(px/5,pz/5) 会让左右两山的瓦垄横躺、
+  // 并在斜视角下拉成斜向鳞片。改为按檐口周长取 u、按累计斜距取 v。
+  const cx0=cxAt(0), cz0=czAt(0);
+  const slant=[0];
+  for(let k=1;k<=N;k++){
+    const s0=(k-1)/N, s1=k/N;
+    slant.push(slant[k-1]+Math.hypot(h*Math.pow(s1,curve)-h*Math.pow(s0,curve), czAt(s1)-czAt(s0)));
+  }
+  // 沿檐口周长累计：四条边首尾相接，总长 4cx0+4cz0
+  const perAt=(e2,px,pz)=>e2===0?    cx0+px
+                   :e2===1? 2*cx0+cz0-pz
+                   :e2===2? 3*cx0+2*cz0-px
+                   :        4*cx0+3*cz0+pz;
+  const ring=(s,k)=>{
     const zh=d/2*(1-s), xh=w/2+(rw-w/2)*s, y=h*Math.pow(s,curve);
     const lift=liftAt(s);
-    const fl=1+.05*Math.pow(1-s,3);            // 角部外撇
+    const fl=flAt(s);                       // 角部外撇
     const cx=xh*fl, cz=zh*fl;
-    const amp=.15*(1-s);                        // 瓦垄：檐深脊浅，每坡 7 道平行真垄
+    // 不再做几何瓦垄：每边仅 5 个顶点，撑不起正弦垄沟，混叠后就是鱼骨纹；垄由贴图承担
     const corners=[[-cx,cz],[cx,cz],[cx,-cz],[-cx,-cz]];
     for(let e2=0;e2<4;e2++){
       const A=corners[e2], B=corners[(e2+1)%4];
@@ -765,13 +821,12 @@ function hipRoofGeo(w,d,h,ridge=.58,curve=2.05,N=8){
         const f=i3/5;
         const px=A[0]+(B[0]-A[0])*f, pz=A[1]+(B[1]-A[1])*f;
         const liftE=lift*Math.pow(Math.abs(Math.cos(f*Math.PI/2)),1.5);   // 起翘沿檐口向中段衰减
-        const disp=amp*(0.5+0.5*Math.sin(f*Math.PI*4));
-        pos.push(px, y+liftE+disp, pz);
-        uv.push(px/5,pz/5);
+        pos.push(px, y+liftE, pz);
+        uv.push(perAt(e2,px,pz)/5, slant[k]/5);
       }
     }
   };
-  for(let k=0;k<=N;k++) ring(k/N);
+  for(let k=0;k<=N;k++) ring(k/N,k);
   const vi=(k,c)=>k*20+c;
   for(let k=0;k<N;k++){
     for(let c=0;c<20;c++){
@@ -818,16 +873,24 @@ function hipFrustumGeo(w1,d1,w2,d2,h,curve=1,N=8){
 // 攒尖顶：曲线收分至宝顶 + 檐口微起翘 + 放射瓦垄（8 点环：角+边中点）
 function pyramidGeo(w,d,h,curve=2.05,N=8){
   const pos=[],uv=[],idx=[];
-  const ring=(s)=>{
-    const a=1-s, y=h*Math.pow(s,curve)+.008*(w+d)*Math.pow(1-s,2.2);   // 檐环微起翘，与庑殿同语言
-    const amp=.14*(1-s);
-    const groove=(px,pz)=>amp*(.55+.45*Math.sin(px*.8+pz*.6));
-    const P=(X,Z)=>{const gg=groove(X,Z);return [X,y+gg,Z];};
+  // 与庑殿同理：攒尖顶的瓦垄自宝顶放射而下，u 取檐口周长、v 取累计斜距
+  const x0=w/2, z0=d/2, yAt=s=>h*Math.pow(s,curve)+.008*(w+d)*Math.pow(1-s,2.2);
+  const slant=[0];
+  for(let k=1;k<=N;k++)
+    slant.push(slant[k-1]+Math.hypot(yAt(k/N)-yAt((k-1)/N), d/2/N));   // 每环水平内缩 d/2/N
+  // 八点环 = 四坡各三点（两角 + 边中点），i<3 前、i<5 右、i<7 后、余左
+  const perAt=(i,px,pz)=>i<3? x0+px
+                   :i<5? 2*x0+z0-pz
+                   :i<7? 3*x0+2*z0-px
+                   :     4*x0+3*z0+pz;
+  const ring=(s,k)=>{
+    const a=1-s, y=yAt(s);   // 檐环微起翘，与庑殿同语言
+    const P=(X,Z)=>[X,y,Z];
     const V=[P(-w/2*a,d/2*a),P(0,d/2*a),P(w/2*a,d/2*a),P(w/2*a,0),
              P(w/2*a,-d/2*a),P(0,-d/2*a),P(-w/2*a,-d/2*a),P(-w/2*a,0)];
-    V.forEach(v=>{pos.push(v[0],v[1],v[2]);uv.push(v[0]/5,v[2]/5);});
+    V.forEach((v,i)=>{pos.push(v[0],v[1],v[2]);uv.push(perAt(i,v[0],v[2])/5, slant[k]/5);});
   };
-  for(let k=0;k<=N;k++) ring(k/N);
+  for(let k=0;k<=N;k++) ring(k/N,k);
   const vi=(k,c)=>k*8+c;
   for(let k=0;k<N;k++) for(let c=0;c<8;c++){
     const a=vi(k,c),b=vi(k,(c+1)%8),a2=vi(k+1,c),b2=vi(k+1,(c+1)%8);
@@ -1097,8 +1160,8 @@ function palace(o){
   }
   const topY=tiers*3;
   if(tiers>0) stairs(g,w*.42,topY,-(d+8+(tiers-1)*9)/2);
-  const blob=new THREE.Mesh(new THREE.PlaneGeometry(w+30,d+30),
-    new THREE.MeshBasicMaterial({map:blobTex,transparent:true,opacity:.5,depthWrite:false}));
+  const blob=new THREE.Mesh(new THREE.PlaneGeometry(w+14,d+14),
+    new THREE.MeshBasicMaterial({map:blobTex,transparent:true,opacity:.34,depthWrite:false}));
   blob.rotation.x=-Math.PI/2; blob.position.y=.16; g.add(blob);   // 根部接触阴影（补阴影贴图分辨率不足）
   if(o.interior){
     interior(g,{...o,topY,bm},topY);
@@ -1130,8 +1193,9 @@ function palace(o){
   eaveDecor(g,w,d,topY+bodyH-1.3,o.dougong);
   let rt=topY+bodyH;
   if(double){
-    const fr=sh(new THREE.Mesh(hipFrustumGeo(w+6,d+6,Math.max(w-18,6),Math.max(d-18,6),4.4,1.7),rm));
-    fr.position.y=rt; g.add(fr);
+    const fr=sh(new THREE.Mesh(hipFrustumGeo(w+6,d+6,Math.max(w-18,6),Math.max(d-18,6),4.4,1.7),
+      roofFit(rm, rm===matGoldG?texRoofG:texRoof, (w+6)/18, .9)));
+    fr.position.y=rt; g.add(fr); flattenTopUV(fr);
     eaveCorners(g,w+6,d+6,rt+.2);
     rt+=4.4;
     box(g,Math.max(w-20,5),4.5,Math.max(d-20,5), 0,rt+2.27,0, bm);
@@ -1153,12 +1217,19 @@ function palace(o){
     eaveCorners(g,rw,rd,rt+.2);
     const rl=rw*.55;
     box(g,rl,1.2,1.2, 0,rt+roofH+.35,0, matGoldDark,false);
-    // 鸱吻（弯钩三段：竖板 + 顶钩内咬 + 尾刺上翘）
+    // 鸱吻：兽头坐脊 + 长尾向内翻卷。三段方块堆出来的剪影是"积木"，卷尾才读得出螭吻
     for(const sgn of [1,-1]){
-      const bx=sgn*(rl/2+.55);
-      box(g,1.1,2.6,1.0, bx,rt+roofH+.9,0, matGoldDark,false);
-      box(g,1.0,.75,1.5, bx-sgn*.45,rt+roofH+2.15,0, matGoldDark,false);
-      box(g,.5,1.5,.8,  bx+sgn*.35,rt+roofH+2.5,0, matGoldDark,false);
+      const bx=sgn*(rl/2+.55), y0=rt+roofH+.35;
+      box(g,1.5,1.9,1.2, bx,y0+.95,0, matGoldDark,false);
+      const tail=new THREE.CatmullRomCurve3([
+        [bx,          y0+1.5, 0],
+        [bx-sgn*.10,  y0+2.6, 0],
+        [bx-sgn*.85,  y0+3.4, 0],
+        [bx-sgn*1.95, y0+3.2, 0],
+        [bx-sgn*2.45, y0+2.4, 0]
+      ].map(a=>new THREE.Vector3(...a)),false,'centripetal');
+      const tm=new THREE.Mesh(new THREE.TubeGeometry(tail,18,.38,7,false),matGoldDark);
+      tm.castShadow=true; g.add(tm);
     }
     // 滴水瓦当排：前后檐口一排半圆瓦当（instanced，随檐口微起翘省略角部 15%）
     {
@@ -1190,6 +1261,24 @@ function palace(o){
   if(o.collide!==false&&w>=10&&d>=10) addCollider(x,z,w/2+1.2,d/2+1.2);
   return g;
 }
+// 券洞：城台门洞为半圆券（白石券脸环 + 内退暗洞），不再是方形黑口
+function archShape(aw,ah){
+  const r=aw/2, hs=Math.max(ah-r,.01), s=new THREE.Shape();
+  s.moveTo(-r,0); s.lineTo(-r,hs);
+  for(let i=1;i<=14;i++){ const a=Math.PI*(1-i/14); s.lineTo(Math.cos(a)*r, hs+Math.sin(a)*r); }
+  s.lineTo(r,0); s.closePath();
+  return s;
+}
+function archGate(parent,cx,aw,ah,zBase,taper,h,sgn){
+  // 城台面是斜收的（底宽顶窄）：券脸面板必须平行该斜面，否则下半截被埋进墙里、看上去悬在半空
+  const th=Math.atan2(taper,h), ry=sgn>0?0:Math.PI, tilt=-sgn*th;
+  const t=Math.min(1.7,aw*.17);                                   // 券脸宽随洞宽走，小洞不套大框
+  const outer=archShape(aw+2*t,ah+t*.7); outer.holes.push(archShape(aw,ah));
+  const f=new THREE.Mesh(new THREE.ShapeGeometry(outer),matMarble);
+  f.position.set(cx,0,sgn*(zBase+.10)); f.rotation.set(tilt,ry,0); parent.add(f);
+  const o=new THREE.Mesh(new THREE.ShapeGeometry(archShape(aw,ah)),matDoor);
+  o.position.set(cx,0,sgn*(zBase+.03)); o.rotation.set(tilt,ry,0); parent.add(o);
+}
 // 城门（城台斜收，顶面墁石 + 压顶石框）
 function gate(o){
   const {x=0,z=0,w,d,h=11,rot=0,towerH=6,bm=matWall}=o;
@@ -1209,11 +1298,11 @@ function gate(o){
   box(g,w+1,.5,.8, 0,h+.2,  d/2+.1, matMarble,false);
   box(g,.8,.5,d+1, -(w/2+.1),h+.2,0, matMarble,false);
   box(g,.8,.5,d+1,  (w/2+.1),h+.2,0, matMarble,false);
+  const zb=d/2+.9;                                              // 城台底边半深（hipFrustum 下宽上窄，收分 0.9）
   [1,-1].forEach(s=>{
-    box(g,w*.2,h*.6,2.4, 0,h*.3, s*(d/2-.6), matDoor,false);
-    box(g,w*.12,h*.4,2,  w*.3,h*.2, s*(d/2-.4), matDoor,false);
-    box(g,w*.12,h*.4,2, -w*.3,h*.2, s*(d/2-.4), matDoor,false);
-    box(g,w*.26,h*.08,3, 0,h*.63, s*(d/2-.55), matMarble,false);   // 门洞石过梁
+    archGate(g,0,     h*.62,h*.80, zb,.9,h,s);                  // 中券（御路）
+    archGate(g, w*.30,h*.42,h*.56, zb,.9,h,s);                  // 两侧券洞
+    archGate(g,-w*.30,h*.42,h*.56, zb,.9,h,s);
   });
   const t=palace({w:w*.62,d:d*.85,bodyH:h*.58,tiers:0,roofH:towerH,bm,collide:false});  // 城楼已被城台碰撞覆盖
   t.position.y=h; g.add(t);
@@ -1240,7 +1329,8 @@ function cornerTower(x,z){
   const g=new THREE.Group(); g.position.set(x,0,z);
   const b1=sh(new THREE.Mesh(hipFrustumGeo(13.6,13.6,12.4,12.4,4),matWallBig)); b1.position.y=0; g.add(b1); edged(b1);
   const b2=sh(new THREE.Mesh(hipFrustumGeo(9,9,8,8,5),matWall)); b2.position.y=4; g.add(b2); edged(b2);
-  const f1=new THREE.Mesh(hipFrustumGeo(13,13,8,8,3),matGold); f1.position.y=9; g.add(f1); edged(f1);
+  const f1=new THREE.Mesh(hipFrustumGeo(13,13,8,8,3),roofFit(matGold,texRoof,13/18,.6));
+  f1.position.y=9; g.add(f1); edged(f1); flattenTopUV(f1);
   box(g,5.6,4,5.6, 0,12.5,0, matWall);
   const f2=new THREE.Mesh(hipRoofGeo(10,10,3.4,.5),matGold); f2.position.y=14.5; g.add(f2); edged(f2);
   box(g,4,3,4, 0,17.9,0, matWall);
@@ -1366,7 +1456,7 @@ function tree(x,z,s=1,kind=1){
 // 院墙（宫各成院，月门拱圈；四面院墙均注册碰撞）
 function compound(x,z,w,d){
   const g=new THREE.Group(); g.position.set(x,0,z);
-  const W=w+20, D=d+18, h=2.4, t=1, bm=brickMat(3,1.2);
+  const W=w+20, D=d+18, h=2.4, t=1, bm=redWallMat(3,1.2);
   box(g,W,h,t, 0,h/2, D/2, bm,false);
   box(g,t,h,D, -W/2,h/2,0, bm,false);
   box(g,t,h,D,  W/2,h/2,0, bm,false);
@@ -1443,14 +1533,19 @@ const matWaterMoat=new THREE.MeshStandardMaterial({color:0x082c40,roughness:.25,
   emissive:0x0a3b52,emissiveIntensity:.5,
   normalMap:texPave.userData.normal.clone(),normalScale:new THREE.Vector2(.3,.3)});
 matWaterMoat.normalMap.needsUpdate=true; matWaterMoat.normalMap.repeat.set(.5,.5);   // 护城河 UV 是世界坐标，瓦片密度独立
-const matPlaza   =std({map:rep(texPlaza,6,20),roughness:.95});
-const matPlaza2  =std({map:rep(texPlaza,7,9),roughness:.9,color:0xd8e4f4});
+// 广场分区材质：按各分区自身尺寸换算平铺密度（1 图 = 8 砖 ≈ 4.8m），避免共用一张材质导致砖块尺度漂移
+const PLAZA_MATS=[];
+function plazaMat(w,d,tint=1){
+  const m=std({map:rep(texPlaza,Math.max(2,Math.round(w/4.8)),Math.max(2,Math.round(d/4.8))),roughness:1});
+  m.userData.tint=tint; PLAZA_MATS.push(m); return m;
+}
 {
   const plat=new THREE.Mesh(new THREE.ShapeGeometry(roundedShape(1012,1560,80),12),matPlatform);
   plat.geometry.rotateX(-Math.PI/2); city.add(plat); edged(plat);
   const pts=roundedShape(1012,1560,80).getPoints(64).map(p=>new THREE.Vector3(p.x,.5,-p.y));
-  city.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts),
-    new THREE.LineBasicMaterial({color:0x2fd9ff,transparent:true,opacity:.85,toneMapped:false})));
+  fx.platEdge=new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts),
+    new THREE.LineBasicMaterial({color:0x2fd9ff,transparent:true,opacity:.85,toneMapped:false}));
+  city.add(fx.platEdge);
   const land=new THREE.Mesh(new THREE.ShapeGeometry(roundedShape(748,956,20),8),matLand);
   land.geometry.rotateX(-Math.PI/2); land.position.y=.1; city.add(land);
   const moatS=roundedShape(872,1080,48); moatS.holes.push(roundedPath(new THREE.Path(),756,964,24));
@@ -1458,23 +1553,25 @@ const matPlaza2  =std({map:rep(texPlaza,7,9),roughness:.9,color:0xd8e4f4});
   moat.geometry.rotateX(-Math.PI/2); moat.position.y=.14; city.add(moat); edged(moat);
   // 庭院功能分区：色块 + 细描边（与地台描边语言统一）
   const zoneLine=new THREE.LineBasicMaterial({color:0x2a9cc4,transparent:true,opacity:.35});
-  const mkZone=(w,d,x,z,mat)=>{
-    const p=new THREE.Mesh(new THREE.PlaneGeometry(w,d),mat);
+  fx.zoneLine=zoneLine;
+  const mkZone=(w,d,x,z,tint)=>{
+    const p=new THREE.Mesh(new THREE.PlaneGeometry(w,d),plazaMat(w,d,tint));
     p.rotation.x=-Math.PI/2; p.position.set(x,.22,z); city.add(p);
     const pts=[[-w/2,-d/2],[w/2,-d/2],[w/2,d/2],[-w/2,d/2]].map(a=>new THREE.Vector3(a[0]+x,.24,a[1]+z));
     city.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts),zoneLine));
   };
-  mkZone(214,940,0,10,matPlaza);
-  mkZone(236,300,0,-45,matPlaza2);
-  mkZone(360,220,0,-590,matPlaza);
-  mkZone(300,170,0,565,matPlaza);
+  mkZone(214,940,0,10,1);
+  mkZone(236,300,0,-45,1.14);   // 三大殿台基区：环以汉白玉，稍亮
+  mkZone(360,220,0,-590,1);
+  mkZone(300,170,0,565,1);
   const river=new THREE.Mesh(new THREE.PlaneGeometry(214,22),matWater);
   river.rotation.x=-Math.PI/2; river.position.set(0,.3,-362); city.add(river);
-  const yuluStrip=new THREE.Mesh(new THREE.PlaneGeometry(6.5,108),
-    new THREE.MeshStandardMaterial({color:0x0d1524,roughness:.55}));
+  // 御路：中轴石板甬道（原为一条近黑窄带，昼档读成地面裂缝）
+  const matYulu=matWith('yulu',()=>{const m=std({map:rep(texPave,1.4,15),roughness:.95});
+    m.userData.tint=1.1; PLAZA_MATS.push(m); return m;});
+  const yuluStrip=new THREE.Mesh(new THREE.PlaneGeometry(6.5,108),matYulu);
   yuluStrip.rotation.x=-Math.PI/2; yuluStrip.position.set(0,.34,-300); city.add(yuluStrip);   // 御路北段（桥-乾清门）
-  const yuluStrip2=new THREE.Mesh(new THREE.PlaneGeometry(6.5,84),
-    new THREE.MeshStandardMaterial({color:0x0d1524,roughness:.55}));
+  const yuluStrip2=new THREE.Mesh(new THREE.PlaneGeometry(6.5,84),matYulu);
   yuluStrip2.rotation.x=-Math.PI/2; yuluStrip2.position.set(0,.34,-414); city.add(yuluStrip2); // 御路南段（午门城台根收边）
   box(city,214,1.2,3, 0,.55,-374, matMarble);
   box(city,214,1.2,3, 0,.55,-350, matMarble);
@@ -1511,14 +1608,11 @@ const matPlaza2  =std({map:rep(texPlaza,7,9),roughness:.9,color:0xd8e4f4});
   mkPave(24,64,12.08,-74,-54); mkPave(24,64,12.08,74,-54);
   addCollider(0,-480,62,22);  // 午门城台碰撞
   addCollider(-74,-533,15,36); addCollider(74,-533,15,36);  // 双翼/敦台
-  box(g,16,11,3, 0,5.5,-21.4, matDoor,false);
-  box(g,11,8,2.6, -30,4,-21.2, matDoor,false);
-  box(g,11,8,2.6,  30,4,-21.2, matDoor,false);
-  box(g,16,11,3, 0,5.5,21.4, matDoor,false);
-  box(g,18.5,1,3.4, 0,11.3,-21.4, matMarble,false);   // 门洞石过梁（五凤楼）
-  box(g,18.5,1,3.4, 0,11.3,21.4, matMarble,false);
-  box(g,13,.8,3, -30,8.2,-21.2, matMarble,false);
-  box(g,13,.8,3,  30,8.2,-21.2, matMarble,false);
+  [1,-1].forEach(s=>{                                 // 午门城台正面开三券洞，中为御路
+    archGate(g,0,     10,12.6, 22.5,.75,16,s);
+    archGate(g,-30,  7.6, 9.2, 22.5,.75,16,s);
+    archGate(g, 30,  7.6, 9.2, 22.5,.75,16,s);
+  });
   const t=palace({w:62,d:20,bodyH:8,tiers:0,roofH:8.5,bm:matWallBig,dougong:true,collide:false}); t.position.y=16; g.add(t);
   const p1=palace({w:18,d:13,bodyH:6,tiers:0,roofH:5,collide:false}); p1.position.set(-74,14,-88); g.add(p1);
   const p2=palace({w:18,d:13,bodyH:6,tiers:0,roofH:5,collide:false}); p2.position.set( 74,14,-88); g.add(p2);
@@ -2550,13 +2644,21 @@ function applyLights(name){
   bloom.strength=L.bloom; renderer.toneMappingExposure=L.expo;
   const goldI = name==='night' ? .5 : (name==='dawn' ? .15 : 0);   // 金顶夜色回归：夜档琉璃自发光
   matGold.emissiveIntensity=goldI; matGoldAmber.emissiveIntensity=goldI; matGoldG.emissiveIntensity=goldI*.6;
+  ROOF_FIT.forEach(m=>m.emissiveIntensity=m.userData.src.emissiveIntensity);   // 按尺寸配平铺的琉璃跟随母材质
   fx.clouds.forEach(c2=>c2.material.opacity = name==='day'?.5:(name==='dawn'?.38:.05));   // 云分档（夜近隐）
   if(fx.terrainMat) fx.terrainMat.emissiveIntensity = name==='day' ? 0 : (name==='dawn' ? .3 : .42);  // 昼间关地形自发光（长城山体夜景不再泛灰）
   const eo = name==='day' ? .16 : (name==='dawn' ? .3 : .42);                            // 描边昼间衰减
   edgeMat.opacity=eo; edgeMatG.opacity=eo*.95;
-  const plazaE = name==='day' ? .32 : (name==='dawn' ? .1 : 0);                          // 广场昼间天光补偿（防汉白玉过曝）
-  matPlaza.emissive.set(0x8fa3bd); matPlaza2.emissive.set(0x9fb2c8);
-  matPlaza.emissiveIntensity=plazaE; matPlaza2.emissiveIntensity=plazaE;
+  // 地面石材分档着色：昼=青砖本色，晨=暖灰，夜=冷蓝压暗（保住数字孪生夜景）
+  const gc = name==='day' ? 0xffffff : (name==='dawn' ? 0x8d8189 : 0x2a3a55);
+  const ge = name==='day' ? .05 : (name==='dawn' ? .04 : 0);                             // 天光补偿降到配角
+  PLAZA_MATS.forEach(m=>{ m.color.set(gc).multiplyScalar(m.userData.tint); m.emissive.set(0x8fa3bd); m.emissiveIntensity=ge; });
+  fx.platEdge.material.opacity = name==='day' ? .1 : (name==='dawn' ? .42 : .85);        // 昼档收掉地台发光边线
+  fx.zoneLine.opacity = name==='day' ? .07 : (name==='dawn' ? .2 : .35);                 // 分区描边同上
+  // 地台底板随档位提亮：昼档用中性灰土色收边，不再是一块浮在海面上的深色平板
+  // （不能直接取雾色——那会让整个城内地面读成一片雪地）
+  matPlatform.color.set(name==='day' ? 0x97a0a4 : (name==='dawn' ? 0x1a2438 : 0x0a1120));
+  matLand.color.set      (name==='day' ? 0x8d8f83 : (name==='dawn' ? 0x1e2a40 : 0x0e1727));
   sun2.intensity = name==='night' ? .25 : (name==='dawn' ? .55 : .3);                    // 近景补光分档
   if(fx.halo) fx.halo.visible=!!L.moon;                                                  // 月晕随月显隐
   scene.environmentIntensity = name==='day' ? .5 : (name==='dawn' ? .5 : .25);           // IBL 分档
