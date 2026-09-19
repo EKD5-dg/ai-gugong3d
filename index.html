@@ -972,38 +972,57 @@ function doors(parent,w,d,topY,bodyH){
   box(parent,w*.09,bodyH*.48,.6,  w*.27,topY+bodyH*.24,-d/2-.2, matDoor,false);
   box(parent,w*.15,bodyH*.6,.7, 0,topY+bodyH*.3, d/2+.25, matDoorStud,false);
 }
-// 彩画枋 + 斗拱（坐斗/横拱/交叉拱/斜昂四件套，InstancedMesh 檐下满铺）
+// 彩画枋 + 斗拱（六层叠出：坐斗/两道横拱/出头拱/顶拱/斜昂 + 一圈撩檐枋，InstancedMesh 檐下满铺）
 function eaveDecor(parent,w,d,y,dougong){
-  // 檐下彩画带：斗拱椽望纹理（替代纯色板）
+  // 檐下彩画带：贴在墙面一侧，给斗拱留出背后的阴影缝（原来它外凸 0.4 把拱块吞成一片）
   const em=matWith('eave'+Math.round(w),()=>std({map:rep(texEave,Math.max(2,Math.round(w/9)),1),roughness:.8}));
-  box(parent,w+.8,1.1,d+.8, 0,y,0, em,false);
+  box(parent,w+.3,1.0,d+.3, 0,y+.1,0, em,false);
   if(!dougong) return;
-  const nx=Math.max(4,Math.floor(w/1.9)),nz=Math.max(3,Math.floor(d/1.9));
+  // 出跳要读得出来靠三件事：够高（一层层叠上去）、够外挑、攒与攒之间留暗缝。
+  // 原来间距 1.9m、总高 0.6m，远看只剩一条糊带。
+  const nx=Math.max(4,Math.round(w/2.9)),nz=Math.max(3,Math.round(d/2.9));
   const pts=[];
   for(let i=0;i<nx;i++){
-    const x=-w/2+.6+i*(w-1.2)/(nx-1);
+    const x=-w/2+.6+i*(w-1.2)/Math.max(1,nx-1);
     pts.push([x,d/2+.9,0,1],[x,-d/2-.9,0,-1]);
   }
   for(let j=0;j<nz;j++){
-    const z=-d/2+.6+j*(d-1.2)/(nz-1);
+    const z=-d/2+.6+j*(d-1.2)/Math.max(1,nz-1);
     pts.push([-w/2-.9,z,-1,0],[w/2+.9,z,1,0]);
   }
-  const M=new THREE.Matrix4(), E=new THREE.Euler(), Q=new THREE.Quaternion(), S1=new THREE.Vector3(1,1,1);
-  const im1=new THREE.InstancedMesh(new THREE.BoxGeometry(1.05,.5,1.05),matGoldDark,pts.length);   // 坐斗
-  const im2=new THREE.InstancedMesh(new THREE.BoxGeometry(1.5,.26,.55),matGoldDark,pts.length);    // 平置横拱（前后檐）
-  const im3=new THREE.InstancedMesh(new THREE.BoxGeometry(.55,.26,1.5),matGoldDark,pts.length);    // 交叉横拱（两山）
-  const im4=new THREE.InstancedMesh(new THREE.BoxGeometry(.22,.22,1.6),matGoldDark,pts.length);    // 斜昂（外挑下倾）
-  let i2=0,i3=0;
+  const M=new THREE.Matrix4(), E=new THREE.Euler(), Q=new THREE.Quaternion(), S1=new THREE.Vector3(1,1,1), V=new THREE.Vector3();
+  // 每攒六层（几何长轴一律取"沿檐口"=局部 x；出跳方向靠 yaw 旋转统一处理，
+  // 免得前后檐与两山各写一套 —— 原实现就是那样，侧面横拱会横穿出去）
+  const layers=[
+    [.95,.5 ,.95 , matGoldDark, .50, .42],   // 坐斗
+    [1.9 ,.28,.62 , matCaihua , .80, .80],   // 一道横拱
+    [.62 ,.28,1.9 , matCaihua , .80, .80],   // 一道出头拱（出跳方向）
+    [2.7 ,.28,.62 , matCaihua ,1.14,1.05],   // 二道横拱（更宽，叠出阶梯）
+    [3.3 ,.30,.62 , matGoldDark,1.52,1.30],  // 顶拱
+    [.26 ,.26,2.3 , matGoldDark,1.30,1.35],  // 斜昂：向外下倾
+  ];
+  const ims=layers.map(L=>new THREE.InstancedMesh(new THREE.BoxGeometry(L[0],L[1],L[2]),L[3],pts.length));
+  const YAX=new THREE.Vector3(0,1,0);
   pts.forEach((p,i)=>{
-    const ox=p[2], oz=p[3];
-    M.setPosition(p[0],y+.25,p[1]); im1.setMatrixAt(i,M);
-    if(oz!==0){ M.setPosition(p[0]+ox*.5,y+.5,p[1]+oz*.55); im2.setMatrixAt(i2++,M); }
-    else{ M.setPosition(p[0]+ox*.55,y+.5,p[1]+oz*.5); im3.setMatrixAt(i3++,M); }
-    Q.setFromEuler(E.set(.5*oz,0,-.5*ox));
-    M.compose(new THREE.Vector3(p[0]+ox*1.2,y+.82,p[1]+oz*1.2),Q,S1); im4.setMatrixAt(i,M);
+    const ox=p[2], oz=p[3];                                   // 该面水平外法线分量
+    const yaw=Math.atan2(ox,oz);                              // 局部 +z 转到外法线方向
+    layers.forEach((L,li)=>{
+      const pitch=li===5?.34:0;                               // 只有斜昂带俯仰：昂头向外下倾
+      V.set(0,0,L[5]).applyAxisAngle(YAX,yaw);                // 出跳偏移（先算完再复用 V）
+      const dx=V.x, dz=V.z;
+      E.set(pitch,yaw,0,'YXZ'); Q.setFromEuler(E);
+      M.compose(V.set(p[0]+dx,y+L[4],p[1]+dz),Q,S1);
+      ims[li].setMatrixAt(i,M);
+    });
   });
-  im2.count=i2; im3.count=i3;
-  parent.add(im1,im2,im3,im4);
+  ims.forEach(im=>parent.add(im));
+  // 撩檐枋：檐口下一圈连续梁，让斗拱明显"撑"在墙与檐之间
+  // 取深青灰而非亮青绿——大块平面在昼档天光下太亮会读成塑料相框
+  const lb=matWith('lb'+Math.round(w),()=>std({color:0x1a3038,roughness:.88}));
+  box(parent,w+4.2,.42,.5, 0,y+1.9, d/2+2.05, lb,false);
+  box(parent,w+4.2,.42,.5, 0,y+1.9,-(d/2+2.05), lb,false);
+  box(parent,.5,.42,d+4.2, -(w/2+2.05),y+1.9,0, lb,false);
+  box(parent,.5,.42,d+4.2,  (w/2+2.05),y+1.9,0, lb,false);
 }
 // 飞檐翘角（四角起翘）
 function eaveCorners(parent,w,d,y){
