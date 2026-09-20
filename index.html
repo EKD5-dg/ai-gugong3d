@@ -1609,6 +1609,10 @@ function plazaMat(w,d,tint=1){
   const moatS=roundedShape(872,1080,48); moatS.holes.push(roundedPath(new THREE.Path(),756,964,24));
   const moat=new THREE.Mesh(new THREE.ShapeGeometry(moatS,10),matWaterMoat);
   moat.geometry.rotateX(-Math.PI/2); moat.position.y=.14; city.add(moat); edged(moat);
+  // 护城河不可踏水：河环带（外 872×1080、内 756×964）注册成四块碰撞体。
+  // 城门券洞是通的，但洞外没有桥——不拦的话穿门而出就是站在水面上（地面 .1、水面 .14）。
+  addCollider(407,0,29,540); addCollider(-407,0,29,540);
+  addCollider(0,-511,378,29); addCollider(0,511,378,29);
   // 庭院功能分区：色块 + 细描边（与地台描边语言统一）
   const zoneLine=new THREE.LineBasicMaterial({color:0x2a9cc4,transparent:true,opacity:.35});
   fx.zoneLine=zoneLine;
@@ -1735,7 +1739,7 @@ await stage('正在升起殿宇楼阁',36);
 {
   const g=gate({x:0,z:100,w:56,d:18,h:10,towerH:5.5}); g.userData.poi=6; g.userData.world='gugong'; city.add(g);
   bronzeVat(-40,0,113); bronzeVat(40,0,113);
-  wall(-110,100,-30,100,7); wall(30,100,110,100,7);
+  wall(-110,100,-28.5,100,7); wall(28.5,100,110,100,7);   // 端点搭接乾清门城台底边（±28.9）
 }
 // —— 后三宫
 {
@@ -1760,10 +1764,12 @@ await stage('正在升起殿宇楼阁',36);
 cornerTower(-376,-480); cornerTower(376,-480); cornerTower(-376,480); cornerTower(376,480);
 // —— 墙体
 wall(-110,-455,-110,95); wall(110,-455,110,95);
-wall(-376,-480,-65,-480); wall(65,-480,376,-480);
-wall(-376,480,-34,480);   wall(34,480,376,480);
-wall(376,-480,376,-176);  wall(376,-124,376,480);
-wall(-376,-480,-376,-176);wall(-376,-124,-376,480);
+// 墙端点须与城台底边搭接：hipFrustum 的底宽是 w+1.8，而墙网格两端各外扩 .6，
+// 端点取"城台半宽 + .5"才不会在墙与门之间留出一道竖向亮缝（午门原来差 2.9m 最明显）
+wall(-376,-480,-61.5,-480); wall(61.5,-480,376,-480);
+wall(-376,480,-32.5,480);   wall(32.5,480,376,480);
+wall(376,-480,376,-174.5);  wall(376,-125.5,376,480);
+wall(-376,-480,-376,-174.5);wall(-376,-125.5,-376,480);
 city.add(gate({x: 376,z:-150,w:48,d:20,h:10,rot:Math.PI/2,towerH:5}));
 city.add(gate({x:-376,z:-150,w:48,d:20,h:10,rot:Math.PI/2,towerH:5}));
 // —— 东六宫 / 西六宫（尺寸错落，宫各成院）+ 文华殿 / 武英殿
