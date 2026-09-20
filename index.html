@@ -282,8 +282,10 @@ import { OutputPass }      from 'three/addons/postprocessing/OutputPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
-// 构建期真实进度：整座城是同步建模的，不主动让帧进度条就永远停在 0%（本机实测构建 ~10s）。
+// 构建期真实进度：整座城是同步建模的，不主动让帧进度条就永远停在 0%。
 // 再 race 一个 120ms 定时器：后台标签页 rAF 被冻结时也不会把启动卡死。
+// 各段 pct 取本机实测累计耗时占比（总 8.1s）：纹理 5 / 材质 13 / 地台 25 / 殿宇 36（最重 2.2s）
+// / 长城 63 / 特效 86。改建模段落时若耗时结构变了，这里要重新量一次，否则进度条又会跑在真实进度前面。
 const stage=(label,pct)=>{
   const f=document.getElementById('ld-fill'), m=document.getElementById('ld-msg');
   if(f) f.style.width=pct+'%';
@@ -394,7 +396,7 @@ const fill2 = new THREE.DirectionalLight(0xbfd8ff, .32); fill2.position.set(-120
 const moonLight = new THREE.DirectionalLight(0xbfd0e8, .55); moonLight.position.set(-1250,520,-1350); scene.add(moonLight); // 月光：勾出远山形体
 const rim = new THREE.DirectionalLight(0x3fd8ff, .32);  rim.position.set(-380,300,-360); scene.add(rim);
 
-await stage('正在烧制砖瓦纹理 · 每一块砖都由代码画出',18);
+await stage('正在烧制砖瓦纹理 · 每一块砖都由代码画出',5);
 /* ═══════════ 程序化纹理工厂（每一块砖 / 每一片瓦都由此生成） ═══════════ */
 function canvasTex(w,h,draw,ns=2.4){
   const c=document.createElement('canvas'); c.width=w; c.height=h;
@@ -680,7 +682,7 @@ function rep(tex,rx,ry){
   texCache[k]=t; return t;
 }
 
-await stage('正在铺陈宫城材质',30);
+await stage('正在铺陈宫城材质',13);
 /* ═══════════ 材质 ═══════════ */
 const city=new THREE.Group(); scene.add(city);        // 世界一：紫禁城
 const gw=new THREE.Group(); scene.add(gw); gw.visible=false; // 世界二：长城
@@ -1577,7 +1579,7 @@ function huabiao(x,z){
   city.add(g);
 }
 
-await stage('正在奠定宫城地台与护城河',42);
+await stage('正在奠定宫城地台与护城河',25);
 /* ═══════════ 世界一：紫禁城 · 地台与水系 ═══════════ */
 const matPlatform=new THREE.MeshStandardMaterial({color:0x0a1120,roughness:.95});
 const matLand    =new THREE.MeshStandardMaterial({color:0x0e1727,roughness:.95});
@@ -1645,7 +1647,7 @@ function plazaMat(w,d,tint=1){
   fx.axis1=axis1; fx.axis2=axis2;
 }
 
-await stage('正在升起殿宇楼阁',52);
+await stage('正在升起殿宇楼阁',36);
 /* ═══════════ 紫禁城建筑群 ═══════════ */
 // —— 午门（五凤楼）
 {
@@ -1905,7 +1907,7 @@ huabiao(-58,0,-552); huabiao(58,0,-552);
   city.add(hill);
 }
 
-await stage('正在堆砌燕山段长城 · 最慢的一步',68);
+await stage('正在堆砌燕山段长城 · 最慢的一步',63);
 /* ═══════════ 世界二：万里长城 ═══════════ */
 function ridgeZ(x){ return 240*Math.sin(x*.0016)+130*Math.sin(x*.0007*2.3+1.4); }
 function ridgeH(x){ return 95+55*Math.sin(x*.0011+.5)+22*Math.sin(x*.0046+2.); }
@@ -2388,7 +2390,7 @@ function terrainH(x,z){
   });
 }
 
-await stage('正在布设星尘与扫描光幕',88);
+await stage('正在布设星尘与扫描光幕',86);
 /* ═══════════ 特效（扫描光幕 / 雷达环 / 星尘） ═══════════ */
 {
   const mkSlab=(w,d)=>{const s=new THREE.Mesh(new THREE.BoxGeometry(w,1.1,d),
