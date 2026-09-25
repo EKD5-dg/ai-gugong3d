@@ -2424,7 +2424,8 @@ await stage('正在布设星尘与扫描光幕',86);
   // 夜空明月（两世界共享，不受雾衰减）
   const moon=new THREE.Mesh(new THREE.SphereGeometry(38,24,18),
     new THREE.MeshBasicMaterial({color:0xb9cfe6,fog:false,toneMapped:false}));
-  moon.position.set(-1250,520,-1350); scene.add(moon); fx.moon=moon;
+  moon.position.set(-1250,520,-1350); moon.layers.set(1);   // 不进 CubeCamera（否则水面反射月亮球体/月晕成亮块）；主相机已开 layer1
+  scene.add(moon); fx.moon=moon;
   // 月晕：additive 径向渐变 sprite
   const haloC=document.createElement('canvas'); haloC.width=haloC.height=128;
   const hg=haloC.getContext('2d'); const hgr=hg.createRadialGradient(64,64,10,64,64,64);
@@ -2432,7 +2433,7 @@ await stage('正在布设星尘与扫描光幕',86);
   hg.fillStyle=hgr; hg.fillRect(0,0,128,128);
   const haloS=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(haloC),
     transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,toneMapped:false,fog:false}));
-  haloS.scale.set(210,210,1); haloS.position.copy(moon.position); scene.add(haloS); fx.halo=haloS;
+  haloS.scale.set(210,210,1); haloS.position.copy(moon.position); haloS.layers.set(1); scene.add(haloS); fx.halo=haloS;
   // 云 billboard：昼/晨可见，缓漂
   const cloudC=document.createElement('canvas'); cloudC.width=256; cloudC.height=128;
   { const cg=cloudC.getContext('2d');
@@ -2497,8 +2498,7 @@ await stage('正在布设星尘与扫描光幕',86);
   const cubeCam=new THREE.CubeCamera(1,2500,cubeRT);
   cubeCam.position.set(0,5,-362); scene.add(cubeCam);
   matWater.envMap=cubeRT.texture; matWater.envMapIntensity=.75;
-  matWaterMoat.envMapIntensity=.4;   // 护城河用场景 IBL（远置 CubeCamera 视差错误）
-  matWaterMoat.envMapIntensity=.4;   // 护城河用场景 IBL（远置 CubeCamera 视差错误）
+  matWaterMoat.envMapIntensity=.4;   // 护城河无独立 envMap：反射走 scene.environment（IBL）
   fx.cubeCam=cubeCam; fx.cubeLast=-9;
 }
 
@@ -2770,8 +2770,8 @@ function applyLights(name){
   matWaterMoat.roughness = name==='day' ? .15 : .65;
   matWater.metalness = name==='day' ? .2 : .02;
   matWaterMoat.metalness = name==='day' ? .2 : .02;
-  if(matWaterMoat.envMap){ matWater.envMapIntensity = name==='day' ? .75 : .15;          // 夜档压低环境反射：月亮在 CubeCamera 贴图里的高光不再炸开
-    matWaterMoat.envMapIntensity = name==='day' ? .4 : .08; }
+  matWater.envMapIntensity = name==='day' ? .75 : (name==='dawn' ? .3 : .12);             // 夜档压低环境反射。注意：原写法 if(matWaterMoat.envMap){...} 条件恒 null，整段从未生效——护城河无独立 envMap，fallback 反射 RoomEnvironment 影棚，夜档被 0.4 强度刷成银白
+  matWaterMoat.envMapIntensity = name==='day' ? .4 : (name==='dawn' ? .16 : .06);
   matWaterMoat.roughness = matWater.roughness;
   if(fx.crowd){ fx.crowd.count = name==='day' ? fx.crowdMax : (name==='dawn' ? Math.floor(fx.crowdMax*.4) : Math.floor(fx.crowdMax*.15)); }
   if(fx.glints) fx.glints.forEach(p=>{ p.userData.o = name==='night' ? .5 : (name==='dawn' ? .2 : 0); });
