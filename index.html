@@ -252,13 +252,22 @@
   // 合成指针事件在指针已消失时会抛 setPointerCapture NotFoundError，属噪声；
   // 计入看门狗会让展陈页每隔几分钟无谓整页重载
   var BENIGN=/setPointerCapture|releasePointerCapture|ResizeObserver loop/i;
-  window.addEventListener('error',function(e){var s=String(e.message||e); if(!BENIGN.test(s)) window.__errs.push(s);});
-  window.addEventListener('unhandledrejection',function(e){var s='rejection: '+String(e.reason); if(!BENIGN.test(s)) window.__errs.push(s);});
+  window.addEventListener('error',function(e){var s=String(e.message||e); if(!BENIGN.test(s)&&window.__errs.length<200) window.__errs.push(s);});
+  window.addEventListener('unhandledrejection',function(e){var s='rejection: '+String(e.reason); if(!BENIGN.test(s)&&window.__errs.length<200) window.__errs.push(s);});
+  // 自愈重载退避：GPU/驱动持续故障时 location.reload 会变成每 ~36s 一次的死循环。
+  // sessionStorage 计数封顶 5 次，正常运行 60s 后清零（下次故障重新享有 5 次额度）。
+  window.guardedReload=function(){
+    var n=0;
+    try{ n=(+sessionStorage.getItem('gw_reload')||0)+1; sessionStorage.setItem('gw_reload',n); }catch(e){}
+    if(n>5) return false;
+    location.reload(); return true;
+  };
   // 阈值 30s：整座城是同步程序化建模，本机实测就要 ~10s，慢机器上 12s 会先弹"加载失败"再正常启动
   setTimeout(function(){
     if(!window.__APP_READY__){
       var m=document.getElementById('ld-msg');
       if(m) m.textContent='资源加载超时：本地 vendor 加载失败，请确认 vendor 目录完整后刷新（本项目无需联网）';
+      setTimeout(function(){ if(!window.__APP_READY__) window.guardedReload(); },15000);
     }
   },30000);
 </script>
@@ -284,8 +293,9 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 
 // 构建期真实进度：整座城是同步建模的，不主动让帧进度条就永远停在 0%。
 // 再 race 一个 120ms 定时器：后台标签页 rAF 被冻结时也不会把启动卡死。
-// 各段 pct 取本机实测累计耗时占比（总 8.1s）：纹理 5 / 材质 13 / 地台 25 / 殿宇 36（最重 2.2s）
-// / 长城 63 / 特效 86。改建模段落时若耗时结构变了，这里要重新量一次，否则进度条又会跑在真实进度前面。
+// 各段 pct 按真机实测标定（第十九轮 8.1s 实测拆掉长城段、加入 edges 烘接与 compile 预热段；
+// 注意无头 SwiftShader 环境的 canvas/编译耗时要慢 3~5 倍，不能拿它标定）。
+// 改建模段落时若耗时结构变了，要重新量一次，否则进度条又会跑在真实进度前面。
 const stage=(label,pct)=>{
   const f=document.getElementById('ld-fill'), m=document.getElementById('ld-msg');
   if(f) f.style.width=pct+'%';
@@ -311,11 +321,11 @@ renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.shadowMap.autoUpdate = false;   // 静态双城：影子只在光照/世界/开关变化时烘焙一次（省去每帧 ~2000 次阴影 draw call）
 renderer.shadowMap.needsUpdate = true;
 
-// MSAA：给 EffectComposer 的渲染目标开 4x 多重采样（否则后期管线丢失抗锯齿）
+// MSAA：给 EffectComposer 的渲染目标开 2x 多重采样（否则后期管线丢失抗锯齿）
 const _rtSize=renderer.getDrawingBufferSize(new THREE.Vector2());
 const _msaaRT=new THREE.WebGLRenderTarget(_rtSize.x,_rtSize.y,{samples:2,type:THREE.HalfFloatType});
 document.body.appendChild(renderer.domElement);
-renderer.domElement.addEventListener('webglcontextlost',e=>{ e.preventDefault(); location.reload(); });  // GPU 上下文丢失自愈
+renderer.domElement.addEventListener('webglcontextlost',e=>{ e.preventDefault(); window.guardedReload(); });  // GPU 上下文丢失自愈（带退避封顶）
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x04070f);
@@ -396,14 +406,14 @@ const fill2 = new THREE.DirectionalLight(0xbfd8ff, .32); fill2.position.set(-120
 const moonLight = new THREE.DirectionalLight(0xbfd0e8, .55); moonLight.position.set(-1250,520,-1350); scene.add(moonLight); // 月光：勾出远山形体
 const rim = new THREE.DirectionalLight(0x3fd8ff, .32);  rim.position.set(-380,300,-360); scene.add(rim);
 
-await stage('正在烧制砖瓦纹理 · 每一块砖都由代码画出',5);
+await stage('正在烧制砖瓦纹理 · 每一块砖都由代码画出',6);
 /* ═══════════ 程序化纹理工厂（每一块砖 / 每一片瓦都由此生成） ═══════════ */
 function canvasTex(w,h,draw,ns=2.4){
   const c=document.createElement('canvas'); c.width=w; c.height=h;
   draw(c.getContext('2d'),w,h);
   const t=new THREE.CanvasTexture(c);
   t.wrapS=t.wrapT=THREE.RepeatWrapping; t.colorSpace=THREE.SRGBColorSpace; t.anisotropy=8;
-  t.userData.normal=makeNormalMap(c,ns);   // 由明度场生成凹凸法线（按材质分频强度）
+  t.userData.normal=ns?makeNormalMap(c,ns):null;   // 由明度场生成凹凸法线（按材质分频强度）；文字/地毯类传 0 跳过逐像素循环
   return t;
 }
 function makeNormalMap(srcCanvas,strength){
@@ -631,14 +641,14 @@ const texPlaqueJianJi=canvasTex(512,128,(g,w,h)=>{
   g.fillStyle='#f2d488'; g.font='bold 78px KaiTi,"楷体",STKaiti,serif';
   g.textAlign='center'; g.textBaseline='middle';
   g.fillText('建 极 绥 猷',w/2,h/2+6);
-});
+},0);   // 匾额走 MeshBasicMaterial：normal/roughnessMap 从未挂上材质，跳过两次逐像素循环
 const texPlaqueZhengDa=canvasTex(512,128,(g,w,h)=>{
   g.fillStyle='#38151c'; g.fillRect(0,0,w,h);
   g.strokeStyle='#e8c06a'; g.lineWidth=6; g.strokeRect(8,8,w-16,h-16);
   g.fillStyle='#f2d488'; g.font='bold 78px KaiTi,"楷体",STKaiti,serif';
   g.textAlign='center'; g.textBaseline='middle';
   g.fillText('正 大 光 明',w/2,h/2+6);
-});
+},0);
 const texPlaque=texPlaqueZhengDa;
 // 井字天花彩画（贴金团龙藻井心）
 const texCoffer=canvasTex(512,512,(g,w,h)=>{
@@ -660,14 +670,14 @@ const texCarpet=canvasTex(256,512,(g,w,h)=>{
   g.lineWidth=3; g.strokeRect(32,32,w-64,h-64);
   g.fillStyle='rgba(201,162,74,.4)';
   for(let i=0;i<5;i++)for(let j=0;j<9;j++){ g.beginPath(); g.arc(48+i*40,60+j*44,5,0,7); g.fill(); }
-});
+},0);   // 地毯：金线本就平整，法线/粗糙图增益可忽略
 // 楹联（蓝底金字）
 const texCouplet=canvasTex(64,256,(g,w,h)=>{
   g.fillStyle='#1c2c48'; g.fillRect(0,0,w,h);
   g.strokeStyle='#c9a24a'; g.lineWidth=4; g.strokeRect(3,3,w-6,h-6);
   g.fillStyle='#e8c06a'; g.font='bold 22px KaiTi,"楷体",serif'; g.textAlign='center';
   for(let y=34;y<h-16;y+=36) g.fillText('龍',w/2,y);
-});
+},0);   // 楹联同理：跳过法线/粗糙图
 
 // 纹理克隆缓存（同一纹理不同平铺密度；法线随母图同步克隆并同密度平铺）
 const texCache={}, matCache={};
@@ -675,6 +685,7 @@ function rep(tex,rx,ry){
   const k=tex.uuid+'|'+rx+'|'+ry;
   if(texCache[k]) return texCache[k];
   const t=tex.clone(); t.needsUpdate=true; t.repeat.set(rx,ry);
+  t.userData.srcUuid=tex.userData.srcUuid||tex.uuid;   // 母图标记：std() 的粗糙图画布按母图只算一次
   if(tex.userData.normal){
     const n=tex.userData.normal.clone(); n.needsUpdate=true; n.repeat.set(rx,ry);
     t.userData.normal=n;
@@ -682,7 +693,7 @@ function rep(tex,rx,ry){
   texCache[k]=t; return t;
 }
 
-await stage('正在铺陈宫城材质',13);
+await stage('正在铺陈宫城材质',15);
 /* ═══════════ 材质 ═══════════ */
 const city=new THREE.Group(); scene.add(city);        // 世界一：紫禁城
 const gw=new THREE.Group(); scene.add(gw); gw.visible=false; // 世界二：长城
@@ -698,7 +709,10 @@ function std(o){
   }
   // 由母图亮度场反相自动生成 roughnessMap（缝糙面光、砖面细磨），零新纹理成本
   if(o.map&&o.map.image&&!o.roughnessMap&&o.map.userData&&o.map.userData.normal){
-    const uid=o.map.uuid;
+    // 粗糙图画布按母图只算一次；纹理实例按 (母图,密度) 克隆并同密度平铺——
+    // r170 各贴图通道 UV 变换独立且克隆共享 Source（不重复上传显存），
+    // 原来全局共享一张 repeat(1,1) 实例，rx×ry 平铺的材质上"缝糙面光"被整体打平
+    const uid=o.map.userData.srcUuid||o.map.uuid;
     if(!_roughCache[uid]){
       const src=o.map.image, w=src.width, h=src.height;
       const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
@@ -715,7 +729,13 @@ function std(o){
       rt.anisotropy=8;
       _roughCache[uid]=rt;
     }
-    o.roughnessMap=_roughCache[uid];
+    const mk=uid+'|'+o.map.repeat.x+'|'+o.map.repeat.y;
+    if(!_roughCache[mk]){
+      const rc=_roughCache[uid].clone();
+      rc.repeat.copy(o.map.repeat);
+      _roughCache[mk]=rc;
+    }
+    o.roughnessMap=_roughCache[mk];
     if(o.roughness===undefined) o.roughness=.82;
   }
   const m=new THREE.MeshStandardMaterial(o); solidMats.add(m); return m;
@@ -798,10 +818,35 @@ function edged(mesh,m){
   mesh.add(e); return mesh;
 }
 function sh(m){ m.castShadow=true; m.receiveShadow=true; return m; }
+// 单位几何 + 几何缓存：box() 全文件数百次调用原本每次 new RoundedBoxGeometry，
+// 同尺寸重复件（门钉/壁柱/撩檐/压顶石…）现在共享同一几何，启动期少几百次分配
+const UNIT_BOX=new THREE.BoxGeometry(1,1,1);
+const _boxGeoCache=new Map();
+function boxGeo(w,h,d){
+  const k=w.toFixed(3)+'|'+h.toFixed(3)+'|'+d.toFixed(3);
+  let g=_boxGeoCache.get(k);
+  if(!g){
+    const r=Math.min(Math.max(Math.min(w,h,d)*.07,.08), Math.min(w,h,d)*.45);
+    g=new RoundedBoxGeometry(w,h,d,2,r); _boxGeoCache.set(k,g);
+  }
+  return g;
+}
+// 同材质小件按材质分组合并（mergeGeo 只做平移拼装，几何原样保留）：
+// doors/格扇/壁柱/撩檐枋/压顶石/院墙这类"每殿 2~6 个同材质 box"各自收敛成 1 个 Mesh
+function mergedBoxes(parent,specs){
+  const byMat=new Map();
+  for(const s of specs){ const a=byMat.get(s.m); if(a) a.push(s); else byMat.set(s.m,[s]); }
+  byMat.forEach((arr,m)=>{
+    const mesh=new THREE.Mesh(mergeGeo(arr.map(s=>({
+      geo:boxGeo(s.w,s.h,s.d), m:new THREE.Matrix4().makeTranslation(s.x,s.y,s.z) }))),m);
+    mesh.castShadow=arr.some(s=>Math.max(s.w,s.h,s.d)>=2);   // 沿用 box() 的投影阈值
+    mesh.receiveShadow=true;
+    parent.add(mesh);
+  });
+}
 function box(parent,w,h,d,x,y,z,m,edge=true){
   // 圆角棱柱：消除生硬的直角切边感（2 段圆角；小件不投影以减轻阴影 pass）
-  const r=Math.min(Math.max(Math.min(w,h,d)*.07,.08), Math.min(w,h,d)*.45);
-  const g=new THREE.Mesh(new RoundedBoxGeometry(w,h,d,2,r),m);
+  const g=new THREE.Mesh(boxGeo(w,h,d),m);
   g.position.set(x,y,z);
   g.castShadow = Math.max(w,h,d)>=2;
   g.receiveShadow=true;
@@ -968,28 +1013,41 @@ function hipRidges(parent,w,d,h,ridge=.55,y0=0,curve=2.05){
 function stairs(parent,wdt,topY,zEdge,cx=0){
   const n=Math.min(9,Math.max(3,Math.round(topY/.8))),sh=topY/n;
   const sgn=zEdge>=0?1:-1;  // 北面(+z)向外递增，南面(-z)向外递减
+  // 每梯段合成 1 个 Mesh：单位盒 × 逐级矩阵缩放（级高风化微差保留），一梯段 9 个 draw call → 1 个
+  const items=[];
   for(let j=0;j<n;j++){
     const hgt=sh*(j+1)*(.97+Math.random()*.06);              // 逐级风化：高度微差
-    const m=new THREE.Mesh(new THREE.BoxGeometry(wdt,hgt,1.6),matMarble);
-    m.position.set(cx+(Math.random()-.5)*.12, hgt/2, zEdge+sgn*(.8+(n-1-j)*1.6)+(Math.random()-.5)*.1);
-    m.castShadow=true; m.receiveShadow=true;
-    parent.add(m);
+    const M=new THREE.Matrix4().makeTranslation(
+      cx+(Math.random()-.5)*.12, hgt/2, zEdge+sgn*(.8+(n-1-j)*1.6)+(Math.random()-.5)*.1);
+    M.multiply(new THREE.Matrix4().makeScale(wdt,hgt,1.6));
+    items.push({geo:UNIT_BOX,m:M});
   }
+  const merged=new THREE.Mesh(mergeGeo(items),matMarble);
+  merged.castShadow=true; merged.receiveShadow=true;
+  parent.add(merged);
 }
+// 柱列：全城约 344 根柱原是逐根独立 Mesh + 逐根建几何，收敛为每殿 1 个 InstancedMesh
+// （单位高圆柱共享，柱高走实例矩阵 y 缩放；matColumn 无贴图，零视觉差异）
+const COL_GEO=new THREE.CylinderGeometry(.55,.62,1,8);
 function colRing(parent,w,d,topY,bodyH){
   const hh=bodyH*.94;
-  const col=(x,z)=>{const c=sh(new THREE.Mesh(new THREE.CylinderGeometry(.55,.62,hh,8),matColumn));
-    c.position.set(x,topY+bodyH/2,z); parent.add(c);};
+  const pts=[];
   const nx=Math.max(2,Math.floor(w/7));
-  for(let i=0;i<nx;i++){const x=-w/2+(i+.5)*w/nx; col(x,d/2-.9); col(x,-d/2+.9);}
+  for(let i=0;i<nx;i++){const x=-w/2+(i+.5)*w/nx; pts.push([x,d/2-.9],[x,-d/2+.9]);}
   const nz=Math.max(2,Math.floor(d/7));
-  for(let j=1;j<nz;j++){const z=-d/2+j*d/nz; col(w/2-.9,z); col(-w/2+.9,z);}
+  for(let j=1;j<nz;j++){const z=-d/2+j*d/nz; pts.push([w/2-.9,z],[-w/2+.9,z]);}
+  const im=new THREE.InstancedMesh(COL_GEO,matColumn,pts.length);
+  const M=new THREE.Matrix4();
+  pts.forEach((p,i)=>{ M.makeScale(1,hh,1); M.setPosition(p[0],topY+bodyH/2,p[1]); im.setMatrixAt(i,M); });
+  sh(im); parent.add(im);
 }
 function doors(parent,w,d,topY,bodyH){
-  box(parent,w*.15,bodyH*.62,.7, 0,topY+bodyH*.31,-d/2-.25, matDoorStud,false);
-  box(parent,w*.09,bodyH*.48,.6, -w*.27,topY+bodyH*.24,-d/2-.2, matDoor,false);
-  box(parent,w*.09,bodyH*.48,.6,  w*.27,topY+bodyH*.24,-d/2-.2, matDoor,false);
-  box(parent,w*.15,bodyH*.6,.7, 0,topY+bodyH*.3, d/2+.25, matDoorStud,false);
+  mergedBoxes(parent,[
+    {w:w*.15,h:bodyH*.62,d:.7, x:0,     y:topY+bodyH*.31, z:-d/2-.25, m:matDoorStud},
+    {w:w*.09,h:bodyH*.48,d:.6, x:-w*.27,y:topY+bodyH*.24, z:-d/2-.2,  m:matDoor},
+    {w:w*.09,h:bodyH*.48,d:.6, x:w*.27, y:topY+bodyH*.24, z:-d/2-.2,  m:matDoor},
+    {w:w*.15,h:bodyH*.6, d:.7, x:0,     y:topY+bodyH*.3,  z: d/2+.25, m:matDoorStud},
+  ]);
 }
 // 彩画枋 + 斗拱（六层叠出：坐斗/两道横拱/出头拱/顶拱/斜昂 + 一圈撩檐枋，InstancedMesh 檐下满铺）
 function eaveDecor(parent,w,d,y,dougong){
@@ -1020,39 +1078,47 @@ function eaveDecor(parent,w,d,y,dougong){
     [3.3 ,.30,.62 , matGoldDark,1.52,1.30],  // 顶拱
     [.26 ,.26,2.3 , matGoldDark,1.30,1.35],  // 斜昂：向外下倾
   ];
-  const ims=layers.map(L=>new THREE.InstancedMesh(new THREE.BoxGeometry(L[0],L[1],L[2]),L[3],pts.length));
-  const YAX=new THREE.Vector3(0,1,0);
+  // 六层收敛为两个 InstancedMesh（金/彩画各一）：层间高度与出跳偏移、斜昂俯仰都烘进几何，
+  // 实例矩阵只剩"就位 + 朝向"。原 6 个 IM × ~20 座殿 = ~120 draw call → ~40
+  const bake=L=>{
+    const g=new THREE.BoxGeometry(L[0],L[1],L[2]);
+    if(L===layers[5]) g.rotateX(.34);          // 只有斜昂带俯仰：昂头向外下倾
+    g.translate(0,L[4],L[5]);
+    return g;
+  };
+  const goldGeo=mergeGeo([layers[0],layers[4],layers[5]].map(L=>({geo:bake(L),m:new THREE.Matrix4()})));
+  const caiGeo =mergeGeo([layers[1],layers[2],layers[3]].map(L=>({geo:bake(L),m:new THREE.Matrix4()})));
+  const imGold=new THREE.InstancedMesh(goldGeo,matGoldDark,pts.length);
+  const imCai =new THREE.InstancedMesh(caiGeo, matCaihua ,pts.length);
   pts.forEach((p,i)=>{
-    const ox=p[2], oz=p[3];                                   // 该面水平外法线分量
-    const yaw=Math.atan2(ox,oz);                              // 局部 +z 转到外法线方向
-    layers.forEach((L,li)=>{
-      const pitch=li===5?.34:0;                               // 只有斜昂带俯仰：昂头向外下倾
-      V.set(0,0,L[5]).applyAxisAngle(YAX,yaw);                // 出跳偏移（先算完再复用 V）
-      const dx=V.x, dz=V.z;
-      E.set(pitch,yaw,0,'YXZ'); Q.setFromEuler(E);
-      M.compose(V.set(p[0]+dx,y+L[4],p[1]+dz),Q,S1);
-      ims[li].setMatrixAt(i,M);
-    });
+    E.set(0,Math.atan2(p[2],p[3]),0); Q.setFromEuler(E);      // 局部 +z 转到外法线方向
+    M.compose(V.set(p[0],y,p[1]),Q,S1);
+    imGold.setMatrixAt(i,M); imCai.setMatrixAt(i,M);
   });
-  ims.forEach(im=>parent.add(im));
+  parent.add(imGold,imCai);
   // 撩檐枋：檐口下一圈连续梁，让斗拱明显"撑"在墙与檐之间
   // 取深青灰而非亮青绿——大块平面在昼档天光下太亮会读成塑料相框
   const lb=matWith('lb'+Math.round(w),()=>std({color:0x1a3038,roughness:.88}));
-  box(parent,w+4.2,.42,.5, 0,y+1.9, d/2+2.05, lb,false);
-  box(parent,w+4.2,.42,.5, 0,y+1.9,-(d/2+2.05), lb,false);
-  box(parent,.5,.42,d+4.2, -(w/2+2.05),y+1.9,0, lb,false);
-  box(parent,.5,.42,d+4.2,  (w/2+2.05),y+1.9,0, lb,false);
+  mergedBoxes(parent,[
+    {w:w+4.2,h:.42,d:.5, x:0,           y:y+1.9, z:d/2+2.05, m:lb},
+    {w:w+4.2,h:.42,d:.5, x:0,           y:y+1.9, z:-(d/2+2.05), m:lb},
+    {w:.5,h:.42,d:d+4.2, x:-(w/2+2.05), y:y+1.9, z:0, m:lb},
+    {w:.5,h:.42,d:d+4.2, x:(w/2+2.05),  y:y+1.9, z:0, m:lb},
+  ]);
 }
-// 飞檐翘角（四角起翘）
+// 飞檐翘角（四角起翘）：每殿 4 Group+4 Mesh 合成 1 个 Mesh（几何全城恒定，共享）
+const CORNER_GEO=new THREE.BoxGeometry(.4,.22,2.0);
 function eaveCorners(parent,w,d,y){
+  const items=[];
   const mk=(x,z)=>{
-    const grp=new THREE.Group(); grp.position.set(x,y,z);
-    grp.rotation.y=Math.atan2(x,z);
-    const fin=new THREE.Mesh(new THREE.BoxGeometry(.4,.22,2.0),matGoldDark);
-    fin.position.set(0,.42,.8); fin.rotation.x=-.42; grp.add(fin);
-    parent.add(grp);
+    const M=new THREE.Matrix4().makeRotationY(Math.atan2(x,z));
+    M.setPosition(x,y,z);
+    M.multiply(new THREE.Matrix4().makeTranslation(0,.42,.8)
+      .multiply(new THREE.Matrix4().makeRotationX(-.42)));
+    items.push({geo:CORNER_GEO,m:M});
   };
   mk(w/2-.4,d/2-.4); mk(-w/2+.4,d/2-.4); mk(w/2-.4,-d/2+.4); mk(-w/2+.4,-d/2+.4);
+  parent.add(new THREE.Mesh(mergeGeo(items),matGoldDark));
 }
 // 汉白玉望柱 + 栏板（每一根望柱都是独立几何体）
 function balustrade(parent,w,d,y){
@@ -1074,10 +1140,12 @@ function balustrade(parent,w,d,y){
     M.setPosition(p[0],y+1.88,p[1]); im3.setMatrixAt(i,M);
   });
   parent.add(im,im2,im3);
-  box(parent,w+.6,.26,.4, 0,y+1.28,-d/2, matMarble,false);
-  box(parent,w+.6,.26,.4, 0,y+1.28, d/2, matMarble,false);
-  box(parent,.4,.26,d+.6, -w/2,y+1.28,0, matMarble,false);
-  box(parent,.4,.26,d+.6,  w/2,y+1.28,0, matMarble,false);
+  mergedBoxes(parent,[   // 四面栏板同材质合并（原 4 个独立 box）
+    {w:w+.6,h:.26,d:.4, x:0,  y:y+1.28, z:-d/2, m:matMarble},
+    {w:w+.6,h:.26,d:.4, x:0,  y:y+1.28, z: d/2, m:matMarble},
+    {w:.4,h:.26,d:d+.6, x:-w/2,y:y+1.28, z:0,  m:matMarble},
+    {w:.4,h:.26,d:d+.6, x: w/2,y:y+1.28, z:0,  m:matMarble},
+  ]);
 }
 // 室内：金砖墁地 / 藻井 / 宝座 / 匾额 / 内柱 / 开启的门扇
 function interior(g,o,topY){
@@ -1209,23 +1277,27 @@ function palace(o){
     bf.position.y=topY; g.add(bf); edged(bf);
     colRing(g,w,d,topY,bodyH);
     doors(g,w,d,topY,bodyH);
-    // 格扇门/窗满披立面（殿宇正背两面）
+    // 格扇门/窗满披立面（殿宇正背两面，同材质合并为 1 个 Mesh）
     if(bodyH>=6){
       const lt=rep(texLattice,Math.max(2,Math.round(w/2.2)),1);   // 原 w/1.5 菱花过密，远看糊成噪点
       const lm=matWith('lat'+Math.round(w)+'x'+Math.round(bodyH),
         ()=>{const m=std({map:lt,roughness:.72,emissive:new THREE.Color(0xffb46a),emissiveMap:lt,emissiveIntensity:0});
           LATTICE_GLOW.push(m); return m;});
-      box(g,w-1.6,bodyH*.6,.3, 0,topY+bodyH*.34,-d/2-.14, lm,false);
-      box(g,w-1.6,bodyH*.6,.3, 0,topY+bodyH*.34, d/2+.14, lm,false);
+      mergedBoxes(g,[
+        {w:w-1.6,h:bodyH*.6,d:.3, x:0,y:topY+bodyH*.34, z:-d/2-.14, m:lm},
+        {w:w-1.6,h:bodyH*.6,d:.3, x:0,y:topY+bodyH*.34, z: d/2+.14, m:lm},
+      ]);
     }
     // 裙肩收脚
     box(g,w+.9,1,d+.9, 0,topY+.5,0, matWallDark,false);
-    if(o.bays){ // 开间壁柱（表达柱网节奏）
+    if(o.bays){ // 开间壁柱（表达柱网节奏；同材质合并为 1 个 Mesh）
+      const specs=[];
       for(let i=0;i<=o.bays;i++){
         const px=-w/2+i*w/o.bays;
-        box(g,.42,bodyH-1,.42, px,topY+(bodyH-1)/2,-d/2-.32, matColumn,false);
-        box(g,.42,bodyH-1,.42, px,topY+(bodyH-1)/2, d/2+.32, matColumn,false);
+        specs.push({w:.42,h:bodyH-1,d:.42, x:px,y:topY+(bodyH-1)/2, z:-d/2-.32, m:matColumn});
+        specs.push({w:.42,h:bodyH-1,d:.42, x:px,y:topY+(bodyH-1)/2, z: d/2+.32, m:matColumn});
       }
+      mergedBoxes(g,specs);
     }
   }
   eaveDecor(g,w,d,topY+bodyH-1.3,o.dougong);
@@ -1350,11 +1422,13 @@ function gate(o){
   const pave=new THREE.Mesh(new THREE.PlaneGeometry(w-1.2,d-1.2),
     matWith('gp'+w+'x'+d,()=>std({map:rep(texPave,Math.max(2,Math.round(w/5)),Math.max(2,Math.round(d/5))),roughness:.92})));
   pave.rotation.x=-Math.PI/2; pave.position.y=h+.07; g.add(pave);
-  // 压顶石框（勾出城台轮廓）
-  box(g,w+1,.5,.8, 0,h+.2,-(d/2+.1), matMarble,false);
-  box(g,w+1,.5,.8, 0,h+.2,  d/2+.1, matMarble,false);
-  box(g,.8,.5,d+1, -(w/2+.1),h+.2,0, matMarble,false);
-  box(g,.8,.5,d+1,  (w/2+.1),h+.2,0, matMarble,false);
+  // 压顶石框（勾出城台轮廓；同材质 4 件合并）
+  mergedBoxes(g,[
+    {w:w+1,h:.5,d:.8, x:0,        y:h+.2, z:-(d/2+.1), m:matMarble},
+    {w:w+1,h:.5,d:.8, x:0,        y:h+.2, z:  d/2+.1,  m:matMarble},
+    {w:.8,h:.5,d:d+1, x:-(w/2+.1),y:h+.2, z:0,         m:matMarble},
+    {w:.8,h:.5,d:d+1, x: (w/2+.1),y:h+.2, z:0,         m:matMarble},
+  ]);
   const zb=d/2+.9;                                              // 城台底边半深（hipFrustum 下宽上窄，收分 0.9）
   [1,-1].forEach(s=>{
     archGate(g,0,     h*.62,h*.80, zb,.9,h,s);                  // 中券（御路）
@@ -1393,19 +1467,21 @@ function cornerTower(x,z){
   box(g,4,3,4, 0,17.9,0, matWall);
   const f3=new THREE.Mesh(pyramidGeo(7.2,7.2,4.6),matGold); f3.position.y=19.4; g.add(f3); edged(f3);
   const fin=new THREE.Mesh(new THREE.SphereGeometry(1.1,12,10),matGoldDark); fin.position.y=24.6; g.add(fin);
-  g.userData={poi:12,world:'gugong'};   // 点击角楼本体打开"角楼"卡片
+  g.userData={poiName:'角楼',world:'gugong'};   // 点击角楼本体打开"角楼"卡片（按名查 POIS，不写死下标）
   addCollider(x,z,7,7);
   city.add(g); return g;
 }
-// 金水桥
+// 金水桥（桥板/桥墩/栏板/碾盘全部同材质汉白玉：6 box 合并为 1 个 Mesh × 5 桥）
 function bridge(x,w){
   const g=new THREE.Group(); g.position.set(x,0,-362);
-  box(g,w,1.5,30, 0,2.1,0, matMarble);
-  box(g,w*.78,1.42,30, 0,.64,0, matMarble,false);   // 桥墩实体：填实桥板底(1.35)到水下，消除临水悬空夹缝
-  box(g,w*.9,.9,1, 0,3.1, 13.6, matMarble,false);
-  box(g,w*.9,.9,1, 0,3.1,-13.6, matMarble,false);
-  box(g,w,.6,3, 0,.8, 16.2, matMarble,false);
-  box(g,w,.6,3, 0,.8,-16.2, matMarble,false);
+  mergedBoxes(g,[
+    {w:w,     h:1.5,  d:30, x:0,y:2.1, z:0,     m:matMarble},
+    {w:w*.78, h:1.42, d:30, x:0,y:.64, z:0,     m:matMarble},   // 桥墩实体：填实桥板底(1.35)到水下，消除临水悬空夹缝
+    {w:w*.9,  h:.9,   d:1,  x:0,y:3.1, z: 13.6, m:matMarble},
+    {w:w*.9,  h:.9,   d:1,  x:0,y:3.1, z:-13.6, m:matMarble},
+    {w:w,     h:.6,   d:3,  x:0,y:.8,  z: 16.2, m:matMarble},
+    {w:w,     h:.6,   d:3,  x:0,y:.8,  z:-16.2, m:matMarble},
+  ]);
   return g;
 }
 // 鎏金铜缸
@@ -1445,6 +1521,33 @@ function jitterGeo(geo,amt){
   geo.computeVertexNormals();
   return geo;
 }
+// 描边烘接：edged() 在建模期为每个大构件生成一个 LineSegments（两城合计 ~140 个对象、
+// 140 次 EdgesGeometry 构建）。世界定型后把线段顶点按 matrixWorld 烘接、按材质各自合并成
+// 一个 LineSegments —— 纯收益：视觉零差异（同材质同 28° 阈值），省 ~138 个 draw call
+function bakeEdges(root){
+  root.updateMatrixWorld(true);
+  const groups=new Map(), doomed=[];
+  const v=new THREE.Vector3();
+  root.traverse(o=>{
+    if(o.isLineSegments&&o.geometry&&o.geometry.type==='EdgesGeometry'&&
+       (o.material===edgeMat||o.material===edgeMatG)){
+      let arr=groups.get(o.material);
+      if(!arr){ arr=[]; groups.set(o.material,arr); }
+      const pa=o.geometry.attributes.position;
+      for(let i=0;i<pa.count;i++){
+        v.fromBufferAttribute(pa,i).applyMatrix4(o.matrixWorld);
+        arr.push(v.x,v.y,v.z);
+      }
+      doomed.push(o);
+    }
+  });
+  groups.forEach((pos,mat)=>{
+    const g=new THREE.BufferGeometry();
+    g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+    root.add(new THREE.LineSegments(g,mat));
+  });
+  doomed.forEach(o=>{ o.parent.remove(o); o.geometry.dispose(); });
+}
 // 简易几何合并（非索引化拼装）
 function mergeGeo(items){
   const pos=[],nor=[],uv=[],col=[];
@@ -1469,57 +1572,59 @@ function mergeGeo(items){
   if(hasCol) g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
   return g;
 }
-// 树（kind: 0 古柏 / 1 宫槐）——皱面有机树冠 + 曲干，每棵独立色相
-function tree(x,z,s=1,kind=1){
-  const g=new THREE.Group(); g.position.set(x,0,z);
-  g.rotation.y=Math.random()*Math.PI*2;
-  const lm=kind?matTreeLat:matTreeCyp;   // 共享材质（顶点色渐变，下暗上亮）
+// 树（kind: 0 古柏 / 1 宫槐）——先收集，后统一实例化：59 棵树原是 59 组独立几何 + 118 个
+// Mesh，改为每类预烘 3 个冠变体 + 1 个干变体（几何与旧版逐棵生成同构，随机差异保留在变体里），
+// 逐树 yaw/缩放/色差由实例矩阵与实例色承载，再按 z 分带保住视锥剔除（见下方实例化块）
+const CITY_TREES=[];
+function tree(x,z,s=1,kind=1){ CITY_TREES.push({x,z,s,kind}); }
+function buildTreeVariant(kind){
   if(kind===0){ // 古柏：柱状密冠（多层叠球，逐层提亮，柏木剪影）
-    const trunk=new THREE.Mesh(mergeGeo([
-      {geo:new THREE.CylinderGeometry(.3*s,.5*s,2.8*s,8),m:new THREE.Matrix4().makeTranslation(0,1.4*s,0)}
-    ]),matTrunk); trunk.castShadow=true; g.add(trunk);
+    const trunk=mergeGeo([
+      {geo:new THREE.CylinderGeometry(.3,.5,2.8,8),m:new THREE.Matrix4().makeTranslation(0,1.4,0)}
+    ]);
     const items=[];
     const layers=[[2.4,1.15,.8],[3.6,.95,.82],[4.7,.72,.8],[5.6,.45,.75]];
     layers.forEach(([ly,r,ry],k)=>{
       const n=3+(k%2);
       for(let b=0;b<n;b++){
-        const a=(b/n+k*.7)*Math.PI*2, off=(k===0?.42:.5)*s*(.7+.3*((b*37)%10)/10);
+        const a=(b/n+k*.7)*Math.PI*2, off=(k===0?.42:.5)*(.7+.3*((b*37)%10)/10);
         const col=new THREE.Color().setHSL(.36+Math.random()*.03,.42,.05+.028*k+Math.random()*.02);
-        items.push({geo:jitterGeo(new THREE.SphereGeometry(r*s*(.75+.5*Math.random()),9,7),.08*s),
-          m:new THREE.Matrix4().makeTranslation(Math.cos(a)*off*s,ly*s+(Math.random()-.5)*.5*s,Math.sin(a)*off*s)
+        items.push({geo:jitterGeo(new THREE.SphereGeometry(r*(.75+.5*Math.random()),9,7),.08),
+          m:new THREE.Matrix4().makeTranslation(Math.cos(a)*off,ly+(Math.random()-.5)*.5,Math.sin(a)*off)
             .multiply(new THREE.Matrix4().makeScale(1,ry,1)),color:col});
       }
     });
-    const canopy=new THREE.Mesh(mergeGeo(items),lm); canopy.castShadow=true; g.add(canopy);
-  }else{ // 宫槐：曲干阔卵冠（外围垂团+顶部亮团，逐团色差）
-    const trunk=new THREE.Mesh(mergeGeo([
-      {geo:new THREE.CylinderGeometry(.3*s,.55*s,3.4*s,8),m:new THREE.Matrix4().makeTranslation(0,1.7*s,0)},
-      {geo:new THREE.CylinderGeometry(.16*s,.22*s,2.4*s,7),
-       m:new THREE.Matrix4().makeTranslation(.9*s,3.9*s,0).multiply(new THREE.Matrix4().makeRotationZ(.55))}
-    ]),matTrunk); trunk.castShadow=true; g.add(trunk);
-    const items=[];
-    const blobs=[[-1.25,4.7,.95,1.0],[1.3,4.9,1.0,1.05],[0,5.7,.85,1.1],[-.95,5.2,.78,.95],[1.05,5.8,.68,1.0],
-                 [0,4.4,.8,.88],[-.6,6.1,.6,.95],[.7,4.3,.7,.9],[-.3,5.4,.72,1.0],[.35,6.2,.5,.9]];
-    blobs.forEach(([bx,by,r2,ry])=>{
-      const col=new THREE.Color().setHSL(.31+Math.random()*.05,.4,.065+(by-4)*.028+Math.random()*.02);
-      items.push({geo:jitterGeo(new THREE.SphereGeometry(r2*s,10,8),.09*s),
-        m:new THREE.Matrix4().makeTranslation(bx*s+(Math.random()-.5)*.5*s,by*s,(Math.random()-.5)*.9*s)
-          .multiply(new THREE.Matrix4().makeScale(1,ry,1)),color:col});
-    });
-    const canopy=new THREE.Mesh(mergeGeo(items),lm); canopy.castShadow=true; g.add(canopy);
+    return {canopy:mergeGeo(items),trunk};
   }
-  city.add(g);
+  // 宫槐：曲干阔卵冠（外围垂团+顶部亮团，逐团色差）
+  const trunk=mergeGeo([
+    {geo:new THREE.CylinderGeometry(.3,.55,3.4,8),m:new THREE.Matrix4().makeTranslation(0,1.7,0)},
+    {geo:new THREE.CylinderGeometry(.16,.22,2.4,7),
+     m:new THREE.Matrix4().makeTranslation(.9,3.9,0).multiply(new THREE.Matrix4().makeRotationZ(.55))}
+  ]);
+  const items=[];
+  const blobs=[[-1.25,4.7,.95,1.0],[1.3,4.9,1.0,1.05],[0,5.7,.85,1.1],[-.95,5.2,.78,.95],[1.05,5.8,.68,1.0],
+               [0,4.4,.8,.88],[-.6,6.1,.6,.95],[.7,4.3,.7,.9],[-.3,5.4,.72,1.0],[.35,6.2,.5,.9]];
+  blobs.forEach(([bx,by,r2,ry])=>{
+    const col=new THREE.Color().setHSL(.31+Math.random()*.05,.4,.065+(by-4)*.028+Math.random()*.02);
+    items.push({geo:jitterGeo(new THREE.SphereGeometry(r2,10,8),.09),
+      m:new THREE.Matrix4().makeTranslation(bx+(Math.random()-.5)*.5,by,(Math.random()-.5)*.9)
+        .multiply(new THREE.Matrix4().makeScale(1,ry,1)),color:col});
+  });
+  return {canopy:mergeGeo(items),trunk};
 }
-// 院墙（宫各成院，月门拱圈；四面院墙均注册碰撞）
+// 院墙（宫各成院，月门拱圈；四面院墙均注册碰撞；五面墙同材质合并为 1 个 Mesh）
 function compound(x,z,w,d){
   const g=new THREE.Group(); g.position.set(x,0,z);
   const W=w+20, D=d+18, h=2.4, t=1, bm=redWallMat(3,1.2);
-  box(g,W,h,t, 0,h/2, D/2, bm,false);
-  box(g,t,h,D, -W/2,h/2,0, bm,false);
-  box(g,t,h,D,  W/2,h/2,0, bm,false);
   const seg=(W-6)/2;
-  box(g,seg,h,t, -(3+seg/2),h/2,-D/2, bm,false);
-  box(g,seg,h,t,  (3+seg/2),h/2,-D/2, bm,false);
+  mergedBoxes(g,[
+    {w:W,  h:h,d:t, x:0,          y:h/2, z: D/2, m:bm},
+    {w:t,  h:h,d:D, x:-W/2,       y:h/2, z:0,    m:bm},
+    {w:t,  h:h,d:D, x: W/2,       y:h/2, z:0,    m:bm},
+    {w:seg,h:h,d:t, x:-(3+seg/2), y:h/2, z:-D/2, m:bm},
+    {w:seg,h:h,d:t, x: (3+seg/2), y:h/2, z:-D/2, m:bm},
+  ]);
   const arch=new THREE.Mesh(new THREE.TorusGeometry(2.6,.34,8,22,Math.PI),matMarble);
   arch.position.set(0,1.35,-D/2); g.add(arch);
   box(g,.72,1.4,t, -2.6,.7,-D/2, matMarble,false);   // 月门框墩：拱脚落在地面（原拱圈两端悬空约1.2m）
@@ -1579,7 +1684,7 @@ function huabiao(x,z){
   city.add(g);
 }
 
-await stage('正在奠定宫城地台与护城河',25);
+await stage('正在奠定宫城地台与护城河',29);
 /* ═══════════ 世界一：紫禁城 · 地台与水系 ═══════════ */
 const matPlatform=new THREE.MeshStandardMaterial({color:0x0a1120,roughness:.95});
 const matLand    =new THREE.MeshStandardMaterial({color:0x0e1727,roughness:.95});
@@ -1651,7 +1756,7 @@ function plazaMat(w,d,tint=1){
   fx.axis1=axis1; fx.axis2=axis2;
 }
 
-await stage('正在升起殿宇楼阁',36);
+await stage('正在升起殿宇楼阁',43);
 /* ═══════════ 紫禁城建筑群 ═══════════ */
 // —— 午门（五凤楼）
 {
@@ -1679,16 +1784,16 @@ await stage('正在升起殿宇楼阁',36);
   const t=palace({w:62,d:20,bodyH:8,tiers:0,roofH:8.5,bm:matWallBig,dougong:true,collide:false}); t.position.y=16; g.add(t);
   const p1=palace({w:18,d:13,bodyH:6,tiers:0,roofH:5,collide:false}); p1.position.set(-74,14,-88); g.add(p1);
   const p2=palace({w:18,d:13,bodyH:6,tiers:0,roofH:5,collide:false}); p2.position.set( 74,14,-88); g.add(p2);
-  g.userData.poi=0; g.userData.world='gugong'; city.add(g);
+  g.userData.poiName='午门'; g.userData.world='gugong'; city.add(g);
 }
 // —— 金水桥 ×5
 {
   const g=new THREE.Group();
   g.add(bridge(0,10)); g.add(bridge(-26,6.5)); g.add(bridge(26,6.5)); g.add(bridge(-48,5.5)); g.add(bridge(48,5.5));
-  g.userData.poi=1; g.userData.world='gugong'; city.add(g);
+  g.userData.poiName='内金水桥'; g.userData.world='gugong'; city.add(g);
 }
 // —— 太和门
-{ const g=gate({x:0,z:-300,w:64,d:22,h:12,towerH:6,dougong:false}); g.userData.poi=2; g.userData.world='gugong'; city.add(g); }
+{ const g=gate({x:0,z:-300,w:64,d:22,h:12,towerH:6,dougong:false}); g.userData.poiName='太和门'; g.userData.world='gugong'; city.add(g); }
 // —— 三大殿（三层共享台基 + 望柱栏板）
 {
   const t=new THREE.Group(); t.position.set(0,0,-45);
@@ -1703,9 +1808,9 @@ await stage('正在升起殿宇楼阁',36);
   city.add(t);
   const td=palace({name:'太和殿',w:64,d:34,bodyH:12,tiers:0,double:true,roofH:10.5,y:9,z:-115,bays:11,
     interior:true,throne:true,plaque:true,doorW:10,doorH:7.6,dougong:true,bm:matWallBig});
-  td.userData.poi=3; td.userData.world='gugong'; city.add(td);
-  const zh=palace({w:28,d:28,bodyH:9,tiers:0,pyr:true,roofH:11,y:9,z:-45,dougong:true}); zh.userData.poi=4; zh.userData.world='gugong'; city.add(zh);
-  const bh=palace({w:54,d:26,bodyH:11,tiers:0,double:true,roofH:9.5,y:9,z:25,dougong:true,bays:9,bm:matWall,shan:true}); bh.userData.poi=5; bh.userData.world='gugong'; city.add(bh);
+  td.userData.poiName='太和殿'; td.userData.world='gugong'; city.add(td);
+  const zh=palace({w:28,d:28,bodyH:9,tiers:0,pyr:true,roofH:11,y:9,z:-45,dougong:true}); zh.userData.poiName='中和殿'; zh.userData.world='gugong'; city.add(zh);
+  const bh=palace({w:54,d:26,bodyH:11,tiers:0,double:true,roofH:9.5,y:9,z:25,dougong:true,bays:9,bm:matWall,shan:true}); bh.userData.poiName='保和殿'; bh.userData.world='gugong'; city.add(bh);
   // 铜缸陈设 + 香炉
   bronzeVat(-58,9,-152); bronzeVat(58,9,-152); bronzeVat(-58,9,18); bronzeVat(58,9,18);
   censer(-30,9,-143); censer(30,9,-143);
@@ -1737,7 +1842,7 @@ await stage('正在升起殿宇楼阁',36);
 }
 // —— 乾清门 + 内墙
 {
-  const g=gate({x:0,z:100,w:56,d:18,h:10,towerH:5.5}); g.userData.poi=6; g.userData.world='gugong'; city.add(g);
+  const g=gate({x:0,z:100,w:56,d:18,h:10,towerH:5.5}); g.userData.poiName='乾清门'; g.userData.world='gugong'; city.add(g);
   bronzeVat(-40,0,113); bronzeVat(40,0,113);
   wall(-110,100,-28.5,100,7); wall(28.5,100,110,100,7);   // 端点搭接乾清门城台底边（±28.9）
 }
@@ -1752,14 +1857,14 @@ await stage('正在升起殿宇楼阁',36);
   city.add(t);
   const qg=palace({name:'乾清宫',w:46,d:24,bodyH:10,tiers:0,roofH:8.5,y:6,z:165,bays:9,bm:matWallWarm,rm:matGoldAmber,
     interior:true,throne:true,plaque:true,doorW:7.5,doorH:6.2,dougong:true});
-  qg.userData.poi=7; qg.userData.world='gugong'; city.add(qg);
-  const jt=palace({w:24,d:24,bodyH:8,tiers:0,pyr:true,roofH:10,y:6,z:215,dougong:true,bm:matWallWarm,rm:matGoldAmber}); jt.userData.poi=8; jt.userData.world='gugong'; city.add(jt);
-  const kn=palace({w:42,d:22,bodyH:9,tiers:0,roofH:8,y:6,z:265,dougong:true,bm:matWallWarm,rm:matGoldAmber}); kn.userData.poi=9; kn.userData.world='gugong'; city.add(kn);
+  qg.userData.poiName='乾清宫'; qg.userData.world='gugong'; city.add(qg);
+  const jt=palace({w:24,d:24,bodyH:8,tiers:0,pyr:true,roofH:10,y:6,z:215,dougong:true,bm:matWallWarm,rm:matGoldAmber}); jt.userData.poiName='交泰殿'; jt.userData.world='gugong'; city.add(jt);
+  const kn=palace({w:42,d:22,bodyH:9,tiers:0,roofH:8,y:6,z:265,dougong:true,bm:matWallWarm,rm:matGoldAmber}); kn.userData.poiName='坤宁宫'; kn.userData.world='gugong'; city.add(kn);
 }
 // —— 御花园·钦安殿
-{ const g=palace({w:22,d:16,bodyH:7,tiers:1,pyr:true,roofH:6,z:392,dougong:true}); g.userData.poi=10; g.userData.world='gugong'; city.add(g); }
+{ const g=palace({w:22,d:16,bodyH:7,tiers:1,pyr:true,roofH:6,z:392,dougong:true}); g.userData.poiName='御花园 · 钦安殿'; g.userData.world='gugong'; city.add(g); }
 // —— 神武门
-{ const g=gate({x:0,z:480,w:64,d:26,h:12,towerH:6}); g.userData.poi=11; g.userData.world='gugong'; city.add(g); }
+{ const g=gate({x:0,z:480,w:64,d:26,h:12,towerH:6}); g.userData.poiName='神武门'; g.userData.world='gugong'; city.add(g); }
 // —— 角楼
 cornerTower(-376,-480); cornerTower(376,-480); cornerTower(-376,480); cornerTower(376,480);
 // —— 墙体
@@ -1782,8 +1887,8 @@ city.add(gate({x:-376,z:-150,w:48,d:20,h:10,rot:Math.PI/2,towerH:5}));
     vi++;
   }
 });
-const whd=palace({w:56,d:26,bodyH:9,tiers:1,roofH:6.5,x: 245,z:-235,dougong:true,shan:true}); whd.userData={poi:16,world:'gugong'}; city.add(whd); compound( 245,-235,56,26);
-const wyd=palace({w:56,d:26,bodyH:9,tiers:1,roofH:6.5,x:-245,z:-235,dougong:true,shan:true}); wyd.userData={poi:17,world:'gugong'}; city.add(wyd); compound(-245,-235,56,26);
+const whd=palace({w:56,d:26,bodyH:9,tiers:1,roofH:6.5,x: 245,z:-235,dougong:true,shan:true}); whd.userData={poiName:'文华殿',world:'gugong'}; city.add(whd); compound( 245,-235,56,26);
+const wyd=palace({w:56,d:26,bodyH:9,tiers:1,roofH:6.5,x:-245,z:-235,dougong:true,shan:true}); wyd.userData={poiName:'武英殿',world:'gugong'}; city.add(wyd); compound(-245,-235,56,26);
 // —— 树木（御花园松柏 / 庭院阔叶）
 for(let gx=-3;gx<=3;gx++) for(let gz=0;gz<6;gz++){
   const jx=(Math.sin(gx*12.9+gz*7.7)*.5+.5)*8-4, jz=(Math.cos(gx*5.3+gz*3.1)*.5+.5)*8-4;
@@ -1792,6 +1897,36 @@ for(let gx=-3;gx<=3;gx++) for(let gz=0;gz<6;gz++){
 }
 [-152,152].forEach(sx=>[-165,-120,-78].forEach(z=>{ tree(sx,z,1.05,1); tree(sx+(sx>0?-14:14),z+20,.85,0); }));
 [-90,90].forEach(sx=>[150,210,270].forEach(z=>tree(sx,z,.8,1)));
+// —— 树木统一实例化：每类 3 冠变体 + 1 干变体，再按 z 向 250m 分带 ——
+// 分带是必须的：全城级 InstancedMesh 的包围球永在视锥内，特写机位会把 59 棵树全部
+// 提交（+10 万三角面）；分带后视锥只命中所在带（InstancedMesh 的包围球按实例自动计算）
+{
+  const VAR=3, M=new THREE.Matrix4(), Q=new THREE.Quaternion(), S=new THREE.Vector3(),
+        P=new THREE.Vector3(), UP=new THREE.Vector3(0,1,0), C=new THREE.Color();
+  const band=z=>z<-250?0:(z<0?1:(z<250?2:3));
+  const buckets=new Map();   // 'kind|variant|band' → [tree,...]
+  CITY_TREES.forEach((t,i)=>{
+    const k=t.kind+'|'+(i%VAR)+'|'+band(t.z);
+    const a=buckets.get(k); if(a) a.push(t); else buckets.set(k,[t]);
+  });
+  const variants=[[],[]];
+  for(let kind=0;kind<2;kind++) for(let v=0;v<VAR;v++) variants[kind].push(buildTreeVariant(kind));
+  buckets.forEach((arr,key)=>{
+    const [kind,v]=key.split('|').map(Number);
+    const lm=kind?matTreeLat:matTreeCyp;
+    const imC=new THREE.InstancedMesh(variants[kind][v].canopy,lm,arr.length);
+    const imT=new THREE.InstancedMesh(variants[kind][v].trunk,matTrunk,arr.length);
+    arr.forEach((t,i)=>{
+      Q.setFromAxisAngle(UP,Math.random()*Math.PI*2);
+      S.set(t.s,t.s,t.s); P.set(t.x,0,t.z);
+      M.compose(P,Q,S); imC.setMatrixAt(i,M); imT.setMatrixAt(i,M);
+      // 逐树微色差：明度/冷暖轻微漂移（乘在顶点色上，不改变品种色调）
+      C.setRGB(.9+Math.random()*.2,.9+Math.random()*.2,.9+Math.random()*.2);
+      imC.setColorAt(i,C);
+    });
+    sh(imC); sh(imT); city.add(imC,imT);
+  });
+}
 // —— 程序化人群：中轴广场参观者剪影（昼密夜稀）——
 {
   const personGeo=mergeGeo([
@@ -1811,6 +1946,7 @@ for(let gx=-3;gx<=3;gx++) for(let gz=0;gz<6;gz++){
     const zn=zones[k%zones.length];
     let x,z,guard=0;
     do{ x=zn[2]+rnd()*(zn[3]-zn[2]); z=zn[0]+rnd()*(zn[1]-zn[0]); }while(bad(x,z)&&guard++<8);
+    if(bad(x,z)) continue;   // 8 次仍未避开禁区：宁可少一人，也不站进内金水河/城台边坡
     people.push({x, z, z0:zn[0], z1:zn[1],
                  s:.85+rnd()*.35, spd:.5+rnd()*.9, dir:rnd()<.5?1:-1, ph:rnd()*6.28});
   }
@@ -1826,7 +1962,7 @@ for(let gx=-3;gx<=3;gx++) for(let gz=0;gz<6;gz++){
   });
   people.forEach(p=>p.x0=p.x);
   fx.crowd=im; fx.crowdMax=people.length; fx.crowd.count=fx.crowdMax; fx.crowdPeople=people;
-  fx._cm=M; fx._cq=Q; fx._cs=S; fx._ca=A; city.add(im);
+  fx._cm=M; fx._cq=Q; fx._cs=S; fx._ca=A; fx._cv=new THREE.Vector3(); city.add(im);
 }
 // —— 程序化人群结束 ——
 sundial(52,9,-30); sundial(-52,9,-30);
@@ -1909,14 +2045,27 @@ huabiao(-58,0,-552); huabiao(58,0,-552);
   hill.add(palace({w:11,d:11,bodyH:5,tiers:0,pyr:true,roofH:6,x:30,y:30,z:-4,collide:false}));  // 辑芳亭
   hill.add(palace({w:10,d:10,bodyH:4,tiers:0,pyr:true,roofH:5,x:-58,y:28,z:-9,collide:false})); // 观妙亭
   hill.add(palace({w:10,d:10,bodyH:4,tiers:0,pyr:true,roofH:5,x:58,y:28,z:-9,collide:false}));  // 富览亭
-  hill.userData={poi:18,world:'gugong'};
+  hill.userData={poiName:'景山万春亭',world:'gugong'};
   city.add(hill);
 }
 
-await stage('正在堆砌燕山段长城 · 最慢的一步',63);
-/* ═══════════ 世界二：万里长城 ═══════════ */
-function ridgeZ(x){ return 240*Math.sin(x*.0016)+130*Math.sin(x*.0007*2.3+1.4); }
-function ridgeH(x){ return 95+55*Math.sin(x*.0011+.5)+22*Math.sin(x*.0046+2.); }
+/* ═══════════ 世界二：万里长城 ═══════════
+   懒加载：整段砌造是启动最重的一段（本机 ~2.2s），而首屏完全用不到 gw（初始 visible=false）。
+   砌造代码整体挪进生成器 gwBuildGen()，重活之间 yield 分帧（每片 ≤~60ms）；
+   入场飞行结束后 startGWBuild() 空闲砌造，用户提前切世界则 ensureGW() 同步收尾。 */
+// 脊线是纯 x 函数：地形网格对同一 x 要纵向采样 ~240 次，带界缓存（步行持续喂新 x 也能自清）省掉大头 sin
+const _rzC=new Map(),_rhC=new Map();
+function ridgeZ(x){ let v=_rzC.get(x);
+  if(v===undefined){ v=240*Math.sin(x*.0016)+130*Math.sin(x*.0007*2.3+1.4);
+    if(_rzC.size>4096)_rzC.clear(); _rzC.set(x,v); }
+  return v; }
+function ridgeH(x){ let v=_rhC.get(x);
+  if(v===undefined){ v=95+55*Math.sin(x*.0011+.5)+22*Math.sin(x*.0046+2.);
+    if(_rhC.size>4096)_rhC.clear(); _rhC.set(x,v); }
+  return v; }
+// 墙高随里程起伏（更雄伟）：建模（墙顶/垛口）与第一人称地面高度共用此函数——
+// 原来在 groundAt 里手抄一份，调墙高曲线时 FPS 眼高会静默与马道铺装错位
+const wallTop=i=>8.5+1.1*Math.sin(i*.23)+.6*Math.sin(i*.07);
 // 确定性值噪声 / fBm / 脊状噪声：山脊锯齿化、侧翼冲沟，摆脱"波纹玩具感"
 function vhash(ix,iz){ const n=Math.sin(ix*127.1+iz*311.7)*43758.5453; return n-Math.floor(n); }
 function vnoise(x,z){
@@ -1975,15 +2124,18 @@ function terrainH(x,z){
     const g=c.getContext('2d');const gr=g.createRadialGradient(16,16,1,16,16,16);
     gr.addColorStop(0,'rgba(255,232,175,1)');gr.addColorStop(.4,'rgba(255,150,60,.85)');gr.addColorStop(1,'rgba(255,90,20,0)');
     g.fillStyle=gr;g.fillRect(0,0,32,32);return new THREE.CanvasTexture(c);})();
-{
+function* gwBuildGen(){
   // ── 山体地形（顶点色 + 低多边形科技风）──
   const sx=340,sz=240,rw=2600,rd=1700;
   const tgeo=new THREE.PlaneGeometry(rw,rd,sx,sz); tgeo.rotateX(-Math.PI/2);
   const pa=tgeo.attributes.position, colors=new Float32Array(pa.count*3);
   // 高度场：网格节点预采样 + 双线性插值采样器（渲染网格与墙体的唯一高度真源）
   const HN=(sx+1)*(sz+1), hs=new Float32Array(HN);
-  for(let j=0;j<=sz;j++)for(let i2=0;i2<=sx;i2++)
-    hs[j*(sx+1)+i2]=terrainH(-rw/2+i2*rw/sx, -rd/2+j*rd/sz)-1.5;
+  for(let j=0;j<=sz;j++){
+    for(let i2=0;i2<=sx;i2++)
+      hs[j*(sx+1)+i2]=terrainH(-rw/2+i2*rw/sx, -rd/2+j*rd/sz)-1.5;
+    if((j%24)===23) yield;   // ~8.2 万次 terrainH（每次 ~70 个 sin）：分帧喂
+  }
   GW.gridH=(x,z)=>{
     const gx=Math.min(sx,Math.max(0,(x+rw/2)*sx/rw)), gz=Math.min(sz,Math.max(0,(z+rd/2)*sz/rd));
     const i0=Math.min(sx-1,Math.floor(gx)), j0=Math.min(sz-1,Math.floor(gz));
@@ -2020,6 +2172,7 @@ function terrainH(x,z){
     colors[i*3]  =Math.max(0,Math.min(1,cc.r+jv));
     colors[i*3+1]=Math.max(0,Math.min(1,cc.g+jv));
     colors[i*3+2]=Math.max(0,Math.min(1,cc.b+jv));
+    if((i%4096)===4095) yield;   // 8.2 万顶点着色也分帧
   }
   tgeo.setAttribute('color',new THREE.BufferAttribute(colors,3));
   tgeo.computeVertexNormals();
@@ -2037,22 +2190,29 @@ function terrainH(x,z){
     for(let k=0;k<oct;k++){ s+=amp*pnoise(u*f,v*f,RP*fq*f); amp*=.5; f*=2; } return s; };
   const pridge=(u,v,fq,oct)=>{ let s=0,amp=.5,f=1;
     for(let k=0;k<oct;k++){ s+=amp*(1-Math.abs(2*pnoise(u*f,v*f,RP*fq*f)-1)); amp*=.5; f*=2; } return s; };
-  const rockCanvas=(()=>{ const S=512,c=document.createElement('canvas'); c.width=c.height=S;
-    const g=c.getContext('2d'), im=g.createImageData(S,S), d=im.data;
-    for(let y=0;y<S;y++)for(let x=0;x<S;x++){
-      const u=x/S*RP, v=y/S*RP, i4=(y*S+x)*4;
-      let L=226+(pfbm(u,v,1,4)-.5)*88;                    // 基岩多尺度斑驳（均值压亮：它是乘在顶点色上的调制图）
-      L-=Math.max(0,pridge(u+7,v+3,2,3)-.80)/.20*74;      // 节理裂隙：脊状噪声贴峰处切细暗线
-      L+=Math.max(0,1-Math.abs(pridge(u+29,v+13,3,2)-.90)/.05)*30;   // 矿物脉：窄亮带
-      L+=(phash(x,y,4096)-.5)*12;                          // 砂粒感，只有贴近才看得见
-      const val=Math.max(118,Math.min(255,L))|0;
-      d[i4]=val; d[i4+1]=(val*.995)|0; d[i4+2]=(val*.972)|0; d[i4+3]=255;   // 极轻的暖偏
+  // 岩石细节画布：256² —— repeat 130×85 下一图约 20m，512 的砂粒在掠射角早已混叠不出，
+  // 逐像素 9 个 pnoise 八度省一半；循环内 yield 分帧
+  const rockS=256, rockCv=document.createElement('canvas'); rockCv.width=rockCv.height=rockS;
+  {
+    const g=rockCv.getContext('2d'), im=g.createImageData(rockS,rockS), d=im.data;
+    for(let y=0;y<rockS;y++){
+      for(let x=0;x<rockS;x++){
+        const u=x/rockS*RP, v=y/rockS*RP, i4=(y*rockS+x)*4;
+        let L=226+(pfbm(u,v,1,4)-.5)*88;                    // 基岩多尺度斑驳（均值压亮：它是乘在顶点色上的调制图）
+        L-=Math.max(0,pridge(u+7,v+3,2,3)-.80)/.20*74;      // 节理裂隙：脊状噪声贴峰处切细暗线
+        L+=Math.max(0,1-Math.abs(pridge(u+29,v+13,3,2)-.90)/.05)*30;   // 矿物脉：窄亮带
+        L+=(phash(x,y,4096)-.5)*12;                          // 砂粒感，只有贴近才看得见
+        const val=Math.max(118,Math.min(255,L))|0;
+        d[i4]=val; d[i4+1]=(val*.995)|0; d[i4+2]=(val*.972)|0; d[i4+3]=255;   // 极轻的暖偏
+      }
+      if((y%32)===31) yield;
     }
-    g.putImageData(im,0,0); return c; })();
-  const texRock=new THREE.CanvasTexture(rockCanvas);
+    g.putImageData(im,0,0);
+  }
+  const texRock=new THREE.CanvasTexture(rockCv);
   texRock.wrapS=texRock.wrapT=THREE.RepeatWrapping; texRock.colorSpace=THREE.SRGBColorSpace;
   texRock.anisotropy=8; texRock.repeat.set(130,85);       // 一图约 20m
-  const texRockN=makeNormalMap(rockCanvas,2.6);
+  const texRockN=makeNormalMap(rockCv,2.6);
   texRockN.repeat.copy(texRock.repeat);
   const terrain=new THREE.Mesh(tgeo,new THREE.MeshStandardMaterial({vertexColors:true,roughness:1,
     color:new THREE.Color(1.12,1.12,1.12),               // 抵掉细节图均值带来的整体压暗（>1 只能用 Color 实例，传数字会被当 hex）
@@ -2098,6 +2258,7 @@ function terrainH(x,z){
       placed++;
     }
     imC.count=placed; imT.count=placed; gw.add(imC,imT);
+  yield;
   }
   const base=new THREE.Mesh(new THREE.ShapeGeometry(roundedShape(2800,1900,90),12),
     new THREE.MeshStandardMaterial({color:0x0a1120,roughness:.95}));
@@ -2121,7 +2282,6 @@ function terrainH(x,z){
   }
   // 自适应细分一次成型：墙体/女墙/垛口共用同一组采样，保证严丝合缝
   const SI=[],PRI=[],THI=[];
-  const wallTop=i=>8.5+1.1*Math.sin(i*.23)+.6*Math.sin(i*.07); // 墙高随里程起伏（更雄伟）
   for(let i=0;i<n;i++){
     const p=P[i], thi=wallTop(i);
     if(i<n-1){
@@ -2251,6 +2411,7 @@ function terrainH(x,z){
     }
     imM.count=mi; gw.add(imM);
   }
+  yield;   // 墙体条带/马道/女墙/垛口是几段大几何拼装，之后才是敌楼与关城
   {  // 断口散落砖石堆：垛墙止步处的风化叙事
     const rp=P[Math.max(0,Math.min(P.length-1,Math.round((1002+1160)/5)))];
     const rubble=new THREE.Mesh(mergeGeo([
@@ -2262,8 +2423,8 @@ function terrainH(x,z){
     rubble.castShadow=true; gw.add(rubble);
   }
 
-  // ── 敌楼（每 200 单位一座，收分梯台身）──
-  function tower(idx,name,poi){
+  // ── 敌楼（每 200 单位一座，收分梯台身；name 直接用 POIS 条目名，点击按名开卡）──
+  function tower(idx,name){
     const p=P[idx], g=new THREE.Group();
     // 按 footprint 四角最低地形落位 + 下延 10 裙座：任何坡向都不悬空
     const bMinY=Math.min(GW.gridH(p.x-10.5,p.z),GW.gridH(p.x+10.5,p.z),GW.gridH(p.x,p.z-10.5),GW.gridH(p.x,p.z+10.5));
@@ -2276,23 +2437,24 @@ function terrainH(x,z){
     const room=new THREE.Mesh(hipFrustumGeo(13,13,11,11,5),matGWTower);
     room.position.y=h-0.4; g.add(room); edged(room,edgeMatG);
     for(const [dx,dz,l] of [[0,-8.8,16.5],[0,8.8,16.5],[-8.8,0,16.5],[8.8,0,16.5]])
-      box(g,dz?l:.8,1.1,dz?.8:l, dx,h+.5,dz, matGWMerlon,false);
-    box(g,3.6,4.8,1.4, 0,4.6,-9.2, matDoor,false);
-    box(g,3.6,4.8,1.4, 0,4.6, 9.2, matDoor,false);
-    box(g,1.4,4.8,3.6, -9.2,4.6,0, matDoor,false);
-    box(g,1.4,4.8,3.6,  9.2,4.6,0, matDoor,false);
-    // 门洞石过梁（消除"贴纸黑门"感）
-    box(g,4.6,.8,1.6, 0,7.4,-9.2, matGWLong,false);
-    box(g,4.6,.8,1.6, 0,7.4, 9.2, matGWLong,false);
-    box(g,.8,.8,4.6, -9.2,7.4,0, matGWLong,false);
-    box(g,.8,.8,4.6,  9.2,7.4,0, matGWLong,false);
+      mergedBoxes(g,[{w:dz?l:.8,h:1.1,d:dz?.8:l, x:dx,y:h+.5,z:dz, m:matGWMerlon}]);   // 垛口围沿
+    mergedBoxes(g,[   // 门洞 + 石过梁（同材质各自合并）
+      {w:3.6,h:4.8,d:1.4, x:0,y:4.6,z:-9.2, m:matDoor},
+      {w:3.6,h:4.8,d:1.4, x:0,y:4.6,z: 9.2, m:matDoor},
+      {w:1.4,h:4.8,d:3.6, x:-9.2,y:4.6,z:0, m:matDoor},
+      {w:1.4,h:4.8,d:3.6, x: 9.2,y:4.6,z:0, m:matDoor},
+      {w:4.6,h:.8,d:1.6, x:0,y:7.4,z:-9.2, m:matGWLong},
+      {w:4.6,h:.8,d:1.6, x:0,y:7.4,z: 9.2, m:matGWLong},
+      {w:.8,h:.8,d:4.6, x:-9.2,y:7.4,z:0, m:matGWLong},
+      {w:.8,h:.8,d:4.6, x: 9.2,y:7.4,z:0, m:matGWLong},
+    ]);
     // 敌楼夜窗：暖光窗孔（夜档自发光，随窗光呼吸）
     const winM=std({color:0x14171d,emissive:0xffb46a,emissiveIntensity:0}); LATTICE_GLOW.push(winM);
     for(const sx2 of [-1,1]) for(const k2 of [-1,1]){
       const ww=new THREE.Mesh(new THREE.BoxGeometry(.2,1.2,1.8),winM);
       ww.position.set(sx2*6.3,h+1.4,k2*3); g.add(ww);
     }
-    g.userData={poi,world:'wall'};
+    g.userData={poiName:name,world:'wall'};
     // 楼体碰撞：两翼各一盒，留出门洞走廊（沿墙方向可穿楼，门洞与视觉门位置对应）
     const tA=P[Math.max(0,idx-2)], tB=P[Math.min(n-1,idx+2)];
     const dvx=tB.x-tA.x, dvz=tB.z-tA.z, dl=Math.hypot(dvx,dvz)||1;
@@ -2324,7 +2486,7 @@ function terrainH(x,z){
     // 瓮城两翼（同样下延埋地）
     box(g,20,20,12, -32,0,0, matGWTower);
     box(g,20,20,12,  32,0,0, matGWTower);
-    g.userData={poi:0,world:'wall'};
+    g.userData={poiName:'关城',world:'wall'};
     // 关城碰撞（随朝向旋转的 AABB 近似）：主体挡在墙端，瓮城两翼封边
     const yc=Math.abs(Math.cos(yaw)), ys=Math.abs(Math.sin(yaw));
     addCollider(p.x,p.z,(46*yc+28*ys)/2+1,(46*ys+28*yc)/2+1,'wall');
@@ -2333,9 +2495,9 @@ function terrainH(x,z){
     gw.add(g);
     GW.guanAddr=p.clone();
   }
-  tower(quarter,'北四楼',1);
-  tower(half,'北八楼',3);
-  tower(threeQ,'望京楼',5);
+  tower(quarter,'敌楼 · 北四楼');
+  tower(half,'北八楼');
+  tower(threeQ,'东端敌楼');
   // 好汉坡：取中段最陡处
   let steepest=quarter,steep=0;
   for(let i=quarter;i<half;i++){
@@ -2351,11 +2513,13 @@ function terrainH(x,z){
     const bbody=new THREE.Mesh(hipFrustumGeo(20,20,15.5,15.5,25),matGWTower);  // 几何底锚定(0..25)
     bbody.position.y=-10; g.add(bbody); edged(bbody,edgeMatG);                 // 下移 10：台身 -10..15，碗/火光露出塔顶
     box(g,13,2,13, 0,14,0, matGWLong,false);
-    // 塔顶垛口围沿（烽火台顶部不再是一块光板）
-    box(g,13,1.1,.7, 0,15.55,-6.15, matGWTower,false);
-    box(g,13,1.1,.7, 0,15.55, 6.15, matGWTower,false);
-    box(g,.7,1.1,13, -6.15,15.55,0, matGWTower,false);
-    box(g,.7,1.1,13,  6.15,15.55,0, matGWTower,false);
+    // 塔顶垛口围沿（烽火台顶部不再是一块光板；同材质 4 件合并）
+    mergedBoxes(g,[
+      {w:13,h:1.1,d:.7, x:0,    y:15.55, z:-6.15, m:matGWTower},
+      {w:13,h:1.1,d:.7, x:0,    y:15.55, z: 6.15, m:matGWTower},
+      {w:.7,h:1.1,d:13, x:-6.15,y:15.55, z:0,     m:matGWTower},
+      {w:.7,h:1.1,d:13, x: 6.15,y:15.55, z:0,     m:matGWTower},
+    ]);
     const bowl=new THREE.Mesh(new THREE.CylinderGeometry(3.4,2.4,2.2,12),matGWLong);
     bowl.position.y=15.5; g.add(bowl);
     // 多层火焰：白炽芯 + 橙焰 + 红焰外沿（billboard 叠加，各自变频摇曳）
@@ -2384,7 +2548,7 @@ function terrainH(x,z){
       sp.position.set((k%3-1)*.9,16.5+k*2,(k>2?1:-1)*.7); sp.scale.setScalar(3+k); g.add(sp); puffs.push(sp);
     }
     GW.smoke.push(puffs);
-    g.userData={poi:8,world:'wall'};
+    g.userData={poiName:'烽火台火盆',world:'wall'};
     // 烽火台碰撞：两翼留走廊，不堵死马道
     const bA=P[Math.max(0,idx-2)], bB=P[Math.min(n-1,idx+2)];
     const bvx=bB.x-bA.x, bvz=bB.z-bA.z, bl=Math.hypot(bvx,bvz)||1;
@@ -2394,9 +2558,47 @@ function terrainH(x,z){
     GW.beacons.push({glow:flames[0],li,y0:17,flames,embers}); GW.beaconGroups.push(g);
     gw.add(g);
   });
+  bakeEdges(gw);   // 长城世界定型：~40 条描边线段烘接成 1~2 条
+}
+// —— 长城砌造调度 ——
+let gwIt=null, gwBuilt=false;
+function afterGWBuilt(){
+  // POIS_W / 视点目录 / 巡航曲线都长在 GW 数据上：数据就绪后补建（原为模块顶层立即求值）
+  POIS_W.push(...buildPOIS_W());
+  Object.assign(WORLDS.wall.views,{'关城':POIS_W[0].view,'敌楼':POIS_W[1].view,'烽火台':POIS_W[4].view,'好汉坡':POIS_W[2].view});
+  const pts=[],looks=[];
+  for(let i=0;i<GW.path.length;i+=6){
+    const p=GW.path[i]; pts.push(new THREE.Vector3(p.x,p.y+30,p.z));
+    const j=Math.min(i+12,GW.path.length-1), q=GW.path[j];
+    looks.push(new THREE.Vector3(q.x,q.y+10,q.z));
+  }
+  tourCurves.wall=new THREE.CatmullRomCurve3(pts,'centripetal');
+  tourLooks.wall=new THREE.CatmullRomCurve3(looks,'centripetal');
+  try{ renderer.compile(gw,camera); }catch(e){}   // 预热长城材质程序：首次切世界不卡着色器编译
+}
+function finishGW(){ if(gwBuilt) return; gwBuilt=true; afterGWBuilt(); }
+function ensureGW(){   // 用到长城世界前调用：未启动则同步整建，已分帧启动则同步收尾剩余片段
+  if(gwBuilt) return;
+  try{
+    if(!gwIt) gwIt=gwBuildGen();
+    while(!gwIt.next().done);
+  }catch(e){ console.error('GW build failed:',e); }
+  finishGW();
+}
+function startGWBuild(){   // 入场飞行结束后空闲分帧砌长城，不与开场动画抢帧
+  if(gwIt) return;
+  gwIt=gwBuildGen();
+  const step=()=>{
+    if(gwBuilt) return;
+    let r;
+    try{ r=gwIt.next(); }catch(e){ console.error('GW build failed:',e); finishGW(); return; }
+    if(r.done){ finishGW(); return; }
+    requestAnimationFrame(()=>setTimeout(step,0));
+  };
+  requestAnimationFrame(()=>setTimeout(step,0));
 }
 
-await stage('正在布设星尘与扫描光幕',86);
+await stage('正在布设星尘与扫描光幕',52);
 /* ═══════════ 特效（扫描光幕 / 雷达环 / 星尘） ═══════════ */
 {
   const mkSlab=(w,d)=>{const s=new THREE.Mesh(new THREE.BoxGeometry(w,1.1,d),
@@ -2502,6 +2704,12 @@ await stage('正在布设星尘与扫描光幕',86);
   fx.cubeCam=cubeCam; fx.cubeLast=-9;
 }
 
+// 紫禁城世界至此定型：~100 条描边线段烘接成 1~2 条（bakeEdges 定义见几何工具段）
+bakeEdges(city);
+await stage('正在预热材质程序 · 千余着色器变体',86);
+// 全场景材质程序预热：把首帧集中爆发的着色器编译挪进 loader 覆盖窗口，揭幕与生长动画不再卡顿
+renderer.compile(scene,camera);
+
 /* ═══════════ POI 数据（两套世界） ═══════════ */
 const POIS_G=[
  {name:'午门',en:'MERIDIAN GATE',year:'明永乐十八年 · 1420',pos:[0,42,-480],view:{p:[52,14,-594],t:[-4,22,-482]},
@@ -2543,8 +2751,11 @@ const POIS_G=[
  {name:'景山万春亭',en:'WANCHUN PAVILION',year:'清乾隆十五年 · 1750',pos:[0,54,660],view:{p:[2,68,586],t:[0,46,660]},
   desc:'景山之巅，北京中轴线制高点。登亭南望，紫禁城金顶琉璃一览无余——此刻脚下，正是你眼前的整座数字孪生城。'},
 ];
-const P0=GW.path?GW.path[2]:new THREE.Vector3();
-const POIS_W=[
+// 长城 POI：全部长在 GW 数据（关城/敌楼/烽火台坐标）上，GW 砌造完成后由 afterGWBuilt() 填入
+const POIS_W=[];
+function buildPOIS_W(){
+ const P0=GW.path[2]||new THREE.Vector3();
+ return [
  {name:'关城',en:'FORTRESS GATE',year:'明弘治十八年 · 1505',pos:[GW.guanAddr?.x||P0.x,(GW.guanAddr?.y||0)+34,GW.guanAddr?.z||0],
   view:{p:[GW.guanAddr?.x-90||-90,(GW.guanAddr?.y||0)+55,GW.guanAddr?.z-150||-150],t:[GW.guanAddr?.x||0,(GW.guanAddr?.y||0)+12,GW.guanAddr?.z||0]},
   desc:'长城东端关隘（模型以单墙段示意瓮城两翼，非完整闭环），城楼扼守隘口。古人云"居庸之险不在关而在八达岭"，此即八达岭之门户。艺术化数字示意。'},
@@ -2583,7 +2794,8 @@ const POIS_W=[
     const W2=(lx,ly,lz)=>[g.x+lx*c+lz*s, g.y+ly, g.z-lx*s+lz*c];
     return {p:W2(26,26,-40),t:W2(0,6,0)};})(),
   desc:'俯瞰关城：城楼居中、瓮城两翼展开，敌军破门外门即入包抄圈，守军可自垛口交叉射击。中国城防"瓮中捉鳖"的经典设计（艺术化示意）。'},
-];
+ ];
+}
 const POI_EN={
  gugong:[
   "The main gate, completed in 1420. Five tower pavilions crown the U-shaped platform; imperial edicts were proclaimed and victorious armies presented here.",
@@ -2631,8 +2843,8 @@ const WORLDS={
   wall:{label:'万里长城',group:gw,pois:POIS_W,slab:()=>fx.slabW,
     sub:'GREAT WALL · 3D DIGITAL TWIN',
     geo:'N 40.359° · E 116.021° · 北京 · 燕山山脉',
-    views:{'全景':{p:[520,360,660],t:[0,50,-40]},'俯瞰':{p:[0,1050,.5],t:[0,0,0]},
-      '关城':POIS_W[0].view,'敌楼':POIS_W[1].view,'烽火台':POIS_W[4].view,'好汉坡':POIS_W[2].view}},
+    // POI 派生视点（关城/敌楼/烽火台/好汉坡）由 afterGWBuilt() 在长城砌造完成后补入
+    views:{'全景':{p:[520,360,660],t:[0,50,-40]},'俯瞰':{p:[0,1050,.5],t:[0,0,0]}}},
 };
 
 /* ═══════════ 标注 / 信息卡 ═══════════ */
@@ -2725,6 +2937,12 @@ let shadowOff=0;                                       // 阴影相机沿 x 的�
 // 描边基准透明度只由光照档位决定：关线框时必须回到当前档位的值，
 // 否则「开线框→切昼→关线框」会把描边永久留在夜档的 .42（昼档本该 .16，白边发脏）
 const edgeBase=(m)=>{ m=m||lightMode; return m==='day'?.16:(m==='dawn'?.3:.42); };
+// 描边透明度单一来源：光照档位 × 线框开关。applyLights 与 setXray 都只调这里——
+// 此前 applyLights 无条件覆写，"线框开着切光照档"会把 0.95 高亮描边静默打回档位值
+function syncEdgeOpacity(){
+  edgeMat.opacity=state.xray?.95:edgeBase();
+  edgeMatG.opacity=state.xray?.85:edgeBase()*.95;
+}
 function applyLights(name){
   const L=LIGHTS[name]||LIGHTS.night;
   const fd=document.getElementById('lightfade');         // 光照切换：暗幕过渡（睁眼自适应感）
@@ -2745,14 +2963,13 @@ function applyLights(name){
   fx.moon.visible=!!L.moon;
   fx.stars.material.opacity=.7*L.stars; fx.stars.visible=L.stars>0;
   bloom.strength=L.bloom; bloom.threshold=L.thr; renderer.toneMappingExposure=L.expo;
+  bloom.enabled=L.bloom>.3;   // 昼档 strength=.14/thr=1.05 本就几乎无输出，但 UnrealBloom 每帧仍跑完整 5 级 mip 链——直接关掉，后处理开销减半
   rim.intensity=L.rim;                                     // 青色轮廓补光是夜景语言，昼档必须关掉大半
   const goldI = name==='night' ? .5 : (name==='dawn' ? .15 : 0);   // 金顶夜色回归：夜档琉璃自发光
   matGold.emissiveIntensity=goldI; matGoldAmber.emissiveIntensity=goldI; matGoldG.emissiveIntensity=goldI*.6;
   ROOF_FIT.forEach(m=>m.emissiveIntensity=m.userData.src.emissiveIntensity);   // 按尺寸配平铺的琉璃跟随母材质
   fx.clouds.forEach(c2=>c2.material.opacity = name==='day'?.5:(name==='dawn'?.38:.05));   // 云分档（夜近隐）
   if(fx.terrainMat) fx.terrainMat.emissiveIntensity = name==='day' ? 0 : (name==='dawn' ? .3 : .42);  // 昼间关地形自发光（长城山体夜景不再泛灰）
-  const eo = edgeBase(name);                                              // 描边昼间衰减
-  edgeMat.opacity=eo; edgeMatG.opacity=eo*.95;
   // 地面石材分档着色：昼=青砖本色，晨=暖灰，夜=冷蓝压暗（保住数字孪生夜景）
   const gc = name==='day' ? 0xd6d0c4 : (name==='dawn' ? 0x8d8189 : 0x2a3a55);   // 昼档留一点余量，别顶满
   const ge = name==='day' ? .03 : (name==='dawn' ? .04 : 0);                             // 天光补偿降到配角
@@ -2778,6 +2995,7 @@ function applyLights(name){
   // —— 英雄时刻结束 ——
   document.querySelectorAll('[data-light]').forEach(b=>b.classList.toggle('on',b.dataset.light===name));
   lightMode=name;
+  syncEdgeOpacity();   // 档位基准变了：线框开着就保住 0.95，关着就落到新档位值
   // 幕次字幕：四幕主题词
   const ACTS={night: activeWorld==='wall' ? '长城夜巡' : '暮色紫禁', dawn:'晨光金顶', day:'正午丹宸'};
   const an2=document.getElementById('actname');
@@ -2877,7 +3095,7 @@ function enterKiosk(){
   setWorld('gugong');
   kioskLoop(my).catch(e=>{        // 循环内任何抛错都不得变成 unhandledrejection：那会被看门狗记账并触发重载循环
     console.error('kiosk loop stopped:',e);
-    if(kioskSeq===my){ kiosk=false; document.body.classList.remove('kiosk'); }
+    if(kioskSeq===my) exitKiosk();   // 复用退出清理：摘 UI、退全屏、关卡片（原只摘 class，观众被困全屏）
   });
 }
 function exitKiosk(){
@@ -2899,7 +3117,7 @@ setInterval(()=>{
   if(document.hidden) return;
   const frozen = performance.now()-lastRafT>30000;
   const broken = window.__errs && window.__errs.length>2;
-  if(frozen||broken) location.reload();
+  if(frozen||broken) window.guardedReload();   // 带退避：必现错误不再每 36s 死循环重载
 },6000);
 
 /* ═══════════ 第一人称步行模拟 ═══════════ */
@@ -2907,13 +3125,13 @@ const fps={on:false,x:0,y:1.7,z:-440,yaw:0,pitch:0,keys:new Set(),eye:1.7};
 let fpsSaved=null, fpsDrag=null;
 function groundAt(x,z){
   if(activeWorld==='wall'){
+    if(!GW.gridH) return .1;   // 长城未砌造完成时的兜底（setWorld 已 ensureGW，此处防御）
     let g=GW.gridH(x,z);
     const rz=ridgeZ(x);
     // 马道面高 = 山脊地形 + wallTop(i)（与建模同源的里程起伏，眼高贴合铺装不再悬空/没入）
     if(Math.abs(z-rz)<5.5){
       const wi=Math.max(0,Math.min(GW.path.length-1,Math.round((x+1160)/5)));
-      const th=8.5+1.1*Math.sin(wi*.23)+.6*Math.sin(wi*.07);
-      g=Math.max(g,GW.gridH(x,rz)+th);
+      g=Math.max(g,GW.gridH(x,rz)+wallTop(wi));
     }
     return g;
   }
@@ -2950,11 +3168,12 @@ function groundAt(x,z){
 function enterFPS(){
   if(fps.on||kiosk) return;
   tourSet(false); closeCard();
-  if(fly){fly=null;controls.enabled=false;}
+  if(fly){ if(fly.onDone) fly.onDone(); fly=null; controls.enabled=false; }
   fpsSaved={pos:camera.position.clone(),target:controls.target.clone()};
   fps.on=true;
   // 按世界给定合理入场点（不从飞行相机取，避免山体/空中/远处）
   if(activeWorld==='wall'){
+    ensureGW();
     const p=GW.path[Math.floor(GW.path.length*.3)]||GW.path[40];
     fps.x=p.x; fps.z=p.z;
     fps.yaw=Math.PI/2;
@@ -3023,6 +3242,7 @@ function rebuildViewButtons(){
 }
 function setWorld(k){
   if(k===activeWorld) return;
+  if(k==='wall') ensureGW();   // 长城懒加载：切过去之前必须砌完（分帧未完则同步收尾）
   if(fps.on) exitFPS();   // 步行中切世界：先退出，避免坐标残留瞬移
   tourSet(false); closeCard(); poiLayer.classList.remove('dim');
   if(dirpanel.classList.contains('show')) fillDir();
@@ -3044,6 +3264,9 @@ document.querySelectorAll('.wbtn[data-world]').forEach(b=>
 let fly=null, tourOn=false, tourPending=false, tourT=0, tourDir=1, lastLook=new THREE.Vector3();
 function flyTo(p,t,dur=1800,onDone){
   tourSet(false,true);
+  // fly 是单例：被新飞行覆盖时旧 onDone 永不执行，tourPending 会永久卡住 → 巡航不推进。
+  // 覆盖前先结算旧回调（旧回调只做状态复位，立即调用是安全语义）
+  if(fly&&fly.onDone){ const cb=fly.onDone; fly.onDone=null; cb(); }
   fly={p0:camera.position.clone(),t0:controls.target.clone(),
        p1:new THREE.Vector3(...p),t1:new THREE.Vector3(...t),
        st:performance.now()+260,dur,onDone};   // 260ms 延迟起飞：与暗幕节奏对齐
@@ -3060,16 +3283,7 @@ tourLooks.gugong=new THREE.CatmullRomCurve3([
   [0,8,-680],[0,6,-480],[0,6,-330],[0,8,-180],[0,10,-40],[0,8,100],
   [0,8,220],[0,8,330],[0,10,430],[0,14,545],[0,22,730]
 ].map(a=>new THREE.Vector3(...a)),'centripetal');
-{
-  const pts=[],looks=[];
-  for(let i=0;i<GW.path.length;i+=6){
-    const p=GW.path[i]; pts.push(new THREE.Vector3(p.x,p.y+30,p.z));
-    const j=Math.min(i+12,GW.path.length-1), q=GW.path[j];
-    looks.push(new THREE.Vector3(q.x,q.y+10,q.z));
-  }
-  tourCurves.wall=new THREE.CatmullRomCurve3(pts,'centripetal');
-  tourLooks.wall=new THREE.CatmullRomCurve3(looks,'centripetal');
-}
+// wall 巡航曲线长在 GW.path 上：由 afterGWBuilt() 补建（原为模块顶层立即求值）
 function tourSet(v,silent=false){
   if(v){
     poiLayer.classList.remove('dim');
@@ -3105,17 +3319,30 @@ function toggleState(k){
 }
 function setXray(on){
   solidMats.forEach(m=>{ m.transparent=on; m.opacity=on?.07:1; m.depthWrite=!on; m.needsUpdate=true; });
-  const eo=edgeBase();                              // 关线框回到当前光照档位的描边基准，不是写死的夜景值
-  edgeMat.opacity=on?.95:eo; edgeMatG.opacity=on?.85:eo*.95;
+  syncEdgeOpacity();   // 关线框回到当前光照档位的描边基准，不是写死的夜景值
 }
 renderer.domElement.addEventListener('pointerdown',()=>{
   if(fps.on) return;
   poiLayer.classList.remove('dim');
-  if(fly) fly=null;   // 点击取消飞行（controls 全程启用，无需恢复）
+  if(fly){ if(fly.onDone) fly.onDone(); fly=null; }   // 点击取消飞行（结算 onDone，防止 tourPending 卡死）
   if(tourOn) tourSet(false);
 });
 const raycaster=new THREE.Raycaster(), ndc=new THREE.Vector2();
 let downXY=null;
+// 点击拾取统一按 poiName 查 POIS 下标（与 kioskLoop 的按名锚点同源）——
+// 硬编码数字下标会在 POIS 增删时静默点错卡片。breakOnVisible 保持两处原有遍历语义差异
+function pickPOI(hits,root,breakOnVisible){
+  for(const h of hits){
+    let o=h.object;
+    while(o&&o.userData.world!==activeWorld&&o!==root) o=o.parent;
+    if(o&&o.userData.world===activeWorld&&o.userData.poiName!==undefined){
+      const i=WORLDS[activeWorld].pois.findIndex(p=>p.name===o.userData.poiName);
+      if(i>=0){ openPOI(i); return true; }
+    }
+    if(breakOnVisible&&h.object.visible) break;
+  }
+  return false;
+}
 renderer.domElement.addEventListener('pointerdown',e=>downXY=[e.clientX,e.clientY]);
 renderer.domElement.addEventListener('pointerup',e=>{
   if(fps.on) return;                     // 步行模式：点击不触发飞行/卡片
@@ -3125,12 +3352,7 @@ renderer.domElement.addEventListener('pointerup',e=>{
   raycaster.setFromCamera(ndc,camera);
   const root=WORLDS[activeWorld].group;
   const hits=raycaster.intersectObjects(root.children,true);
-  for(const h of hits){
-    let o=h.object;
-    while(o&&o.userData.world!==activeWorld&&o!==root) o=o.parent;
-    if(o&&o.userData.world===activeWorld&&o.userData.poi!==undefined){ openPOI(o.userData.poi); return; }
-    if(h.object.visible) break;
-  }
+  if(pickPOI(hits,root,true)) return;
   closeCard();
 });
 // 双击：聚焦任意位置（点到建筑则打开其卡片）
@@ -3140,11 +3362,7 @@ renderer.domElement.addEventListener('dblclick',e=>{
   raycaster.setFromCamera(ndc,camera);
   const root=WORLDS[activeWorld].group;
   const hits=raycaster.intersectObjects(root.children,true);
-  for(const h of hits){
-    let o=h.object;
-    while(o&&o.userData.world!==activeWorld&&o!==root) o=o.parent;
-    if(o&&o.userData.world===activeWorld&&o.userData.poi!==undefined){ openPOI(o.userData.poi); return; }
-  }
+  if(pickPOI(hits,root,false)) return;
   if(hits.length){
     const p=hits[0].point.clone();
     const dir=new THREE.Vector3().subVectors(camera.position,p).setY(0).normalize();
@@ -3251,12 +3469,13 @@ function animate(){
   matWater.emissiveIntensity=wE; matWaterMoat.emissiveIntensity=wE;
   matWater.normalMap.offset.set(t*.018, t*.009);       // 水面缓流
   matWaterMoat.normalMap.offset.set(t*.012, t*.006);   // 护城河独立流向
-  if(fx.cubeCam && activeWorld==='gugong' && t-fx.cubeLast>2.5){
+  if(fx.cubeCam && activeWorld==='gugong' && t-fx.cubeLast>(lightMode==='night'?5:2.5)){
+    // 夜档反射贡献极低（envMapIntensity=.12）：捕捉间隔放宽到 5s，省掉每 2.5s 一次的 6 面全场景渲染
     fx.cubeLast=t;
     matWater.visible=false; matWaterMoat.visible=false;   // 捕捉时隐藏水面自身，防自反馈
     fx.cubeCam.update(renderer,scene);
     matWater.visible=true; matWaterMoat.visible=true;
-  }   // 水面反射 2.5s 一捕（每捕=再渲染 6 遍城，1s 一捕会造成周期性掉帧）
+  }   // 水面反射按档 2.5s/5s 一捕（每捕=再渲染 6 遍城，1s 一捕会造成周期性掉帧）
   if(fx.shaftMat) fx.shaftMat.opacity=lightMode==='dawn'?.5:.12;                            // 晨光光柱
   if(fx.dust){ fx.dust.material.opacity=lightMode==='dawn'?.8:.15; fx.dust.rotation.y=t*.02; }  // 殿内微尘
   if(fx.goldenDrift){                                                        // 晨光金顶驻留缓推
@@ -3278,18 +3497,18 @@ function animate(){
     } else fx.sweep.material.opacity=0;
   }
   if(fx.glints) fx.glints.forEach((p,i)=>{ p.material.opacity=p.userData.o*(.85+.15*Math.sin(t*2.1+i*2.2)); });
-  if(fx.shaftMat) fx.shaftMat.opacity=lightMode==='dawn'?.5:.12;
   // 音景四幕：风底噪常驻，昼人声，晨钟每 8s
   if(AMBIENCE.ctx&&!AMBIENCE.mute){
     const tgt = lightMode==='night' ? .16 : (lightMode==='dawn' ? .34 : .26);
     AMBIENCE.master.gain.value += (tgt-AMBIENCE.master.gain.value)*Math.min(1,dt*2);
     if(AMBIENCE.murmur) AMBIENCE.murmur.gain.value = lightMode==='day' ? .12 : (lightMode==='dawn' ? .04 : 0);
     if(AMBIENCE.windLP) AMBIENCE.windLP.frequency.value=380+window.__r3.camera.position.y*.12;
-    if(lightMode==='dawn' && t-AMBIENCE.lastBell>8){ AMBIENCE.lastBell=t; AMBIENCE.bell(); setTimeout(()=>AMBIENCE.bell&&AMBIENCE.bell(.06),600); }
+    if(lightMode==='dawn' && t-AMBIENCE.lastBell>8){ AMBIENCE.lastBell=t; AMBIENCE.bell();
+      setTimeout(()=>{ if(!AMBIENCE.mute&&AMBIENCE.bell) AMBIENCE.bell(.06); },600); }   // 静音后补响的一声不再漏出来
   }
   // 人群沿区带缓行（摆臂感用微幅侧移近似）
   if(fx.crowd&&fx.crowdPeople){
-    const M=fx._cm,Q=fx._cq,S=fx._cs,A=fx._ca;
+    const M=fx._cm,Q=fx._cq,S=fx._cs,A=fx._ca,CV=fx._cv;
     fx.crowdPeople.forEach((p,i)=>{
       const moving=Math.sin(t*.13+p.ph)>-.35;   // 走停聚散：三成时间驻留
       const spd=(moving?p.spd:0)*(lightMode==='night'?.6:1);   // 夜巡缓行
@@ -3298,7 +3517,7 @@ function animate(){
       p.z+=p.dir*spd*dt;
       if(p.z>p.z1){p.z=p.z1;p.dir=-1;} if(p.z<p.z0){p.z=p.z0;p.dir=1;}
       Q.setFromAxisAngle(A,p.dir>0?0:Math.PI);
-      M.compose(new THREE.Vector3(p.x0+Math.sin(t*.4+p.ph*3)*.8+Math.sin(t*4+i)*.06,.12,p.z),Q,S.set(p.s,p.s,p.s));
+      M.compose(CV.set(p.x0+Math.sin(t*.4+p.ph*3)*.8+Math.sin(t*4+i)*.06,.12,p.z),Q,S.set(p.s,p.s,p.s));   // scratch 向量复用：220 人×60fps 的每帧分配归零
       fx.crowd.setMatrixAt(i,M);
     });
     fx.crowd.instanceMatrix.needsUpdate=true;
@@ -3412,16 +3631,34 @@ function animate(){
   }
   renderer.info.reset();
 }
-animate();
-window.__APP_READY__=true;
+// 调试钩子先于首帧注册：__r3 在 animate 的音景分支被引用，若晚于首帧赋值，
+// 任何提前触发 pointerdown→initAmbience 的路径都会在首帧抛 TypeError
 window.__gw=gw; window.__city=city;   // 调试钩子
 window.__r3={renderer,scene,camera,controls,composer};
 window.__THREE=THREE;
 window.__animate=animate; // 手动步进（rAF 被系统冻结时用于验证）
 window.__fps=fps;         // 调试钩子：第一人称状态
 window.__dbg=()=>({aw:activeWorld,wk:Object.keys(WORLDS),has:!!WORLDS[activeWorld],wpois:WORLDS[activeWorld]?WORLDS[activeWorld].pois.length:-1,
-  tourOn,tourPending,fly:!!fly,cols:COLLIDERS.length});
+  tourOn,tourPending,fly:!!fly,cols:COLLIDERS.length,
+  lm:lightMode,xray:state.xray,edge:[+edgeMat.opacity.toFixed(3),+edgeMatG.opacity.toFixed(3)],bloomOn:bloom.enabled,
+  gwBuilt,gwKids:gw.children.length,wallPois:POIS_W.length,wallViews:Object.keys(WORLDS.wall.views).length,tourWall:!!tourCurves.wall});
 window.__finishGrow=()=>{ growing=false; city.scale.y=1; clock.getDelta(); renderer.shadowMap.needsUpdate=true; };
+window.__views=()=>WORLDS[activeWorld].views;   // 调试钩子：当前世界视点目录（坐标直读）
+window.__light=()=>({lm:lightMode,hemi:hemi.intensity,amb:amb.intensity,sunI:+sun.intensity.toFixed(3),
+  sunC:'#'+sun.color.getHexString(),expo:renderer.toneMappingExposure,
+  fogN:scene.fog.near,fogF:scene.fog.far,
+  bloomOn:bloom.enabled,bloomS:+bloom.strength.toFixed(2),bloomT:+bloom.threshold.toFixed(2),
+  smE:renderer.shadowMap.enabled,smN:renderer.shadowMap.needsUpdate,
+  edge:+edgeMat.opacity.toFixed(2),rim:+rim.intensity.toFixed(2),envI:+scene.environmentIntensity.toFixed(2),
+  shadowOff,sunPos:[sun.position.x|0,sun.position.y|0,sun.position.z|0],
+  sunTgt:[sun.target.position.x|0,sun.target.position.y|0,sun.target.position.z|0],
+  sunDir:[(sun.position.x-sun.target.position.x)|0,(sun.position.y-sun.target.position.y)|0,(sun.position.z-sun.target.position.z)|0],
+  shadowBtn:document.querySelector('[data-toggle="shadow"]').classList.contains('on')});   // 调试钩子：光照/阴影状态直读
+window.__q=q=>{ quality=q; applyQuality(); };   // 调试钩子：手动驱动画质档位（自动降档在无头环境不可达）
+animate();
+window.__APP_READY__=true;
+// 正常运行 60s 后清掉自愈重载计数：下次 GPU/资源故障重新享有 5 次额度
+setTimeout(()=>{ try{ sessionStorage.setItem('gw_reload','0'); }catch(e){} },60000);
 
 /* ═══════════ 入场 ═══════════ */
 buildMarkers(); rebuildViewButtons();
@@ -3431,6 +3668,7 @@ buildMarkers(); rebuildViewButtons();
     document.getElementById('loader').classList.add('done');
     growing=true;
     const v=WORLDS.gugong.views['全景']; flyTo(v.p,v.t,3400);
+    setTimeout(startGWBuild,4600);   // 开场飞行（420+3400ms）结束后空闲分帧砌长城
   },420);
 }
 </script>
