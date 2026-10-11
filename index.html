@@ -191,7 +191,7 @@
   <div class="row"><span>TRIANGLES</span><span id="st-tri">--</span></div>
   <div class="row"><span>DRAW CALLS</span><span id="st-call">--</span></div>
   <div class="row"><span>CAM</span><span id="st-cam">--</span></div>
-  <div class="row"><span>RENDER</span><span class="ok">WEBGL · ONLINE · r20.3</span></div>
+  <div class="row"><span>RENDER</span><span class="ok">WEBGL · ONLINE · r20.4</span></div>
 </div>
 
 <div id="pois"></div>
@@ -2944,6 +2944,17 @@ function syncEdgeOpacity(){
   edgeMat.opacity=state.xray?.95:edgeBase();
   edgeMatG.opacity=state.xray?.85:edgeBase()*.95;
 }
+// 金顶琉璃/格扇窗的夜色自发光 + 月亮月晕显隐：随光照档位取值、随「光影」总开关归零——
+// 像素归因实测这些自发光是夜档大团光斑的来源（bloom 放大重檐金顶成光柱），关光影=纯月光平光夜
+function applyGoldEmissive(){
+  const on=state.shadow;
+  const goldI = on ? (lightMode==='night' ? .5 : (lightMode==='dawn' ? .15 : 0)) : 0;
+  matGold.emissiveIntensity=goldI; matGoldAmber.emissiveIntensity=goldI; matGoldG.emissiveIntensity=goldI*.6;
+  ROOF_FIT.forEach(m=>m.emissiveIntensity=m.userData.src.emissiveIntensity);   // 按尺寸配平铺的琉璃跟随母材质
+  const moonOn=!!LIGHTS[lightMode].moon&&on;
+  if(fx.moon) fx.moon.visible=moonOn;
+  if(fx.halo) fx.halo.visible=moonOn;   // 月晕随月显隐
+}
 function applyLights(name){
   const L=LIGHTS[name]||LIGHTS.night;
   const fd=document.getElementById('lightfade');         // 光照切换：暗幕过渡（睁眼自适应感）
@@ -2961,14 +2972,11 @@ function applyLights(name){
   }
   fill.intensity=L.fill; fill2.intensity=L.fill2; moonLight.intensity=L.moonL;
   skyDome.material.map=SKYTEX[name]||SKYTEX.night; skyDome.material.needsUpdate=true;
-  fx.moon.visible=!!L.moon;
+  if(fx.moon) fx.moon.visible=!!L.moon&&state.shadow;   // （显隐统一由 applyGoldEmissive 收口）
   fx.stars.material.opacity=.7*L.stars; fx.stars.visible=L.stars>0;
   bloom.strength=L.bloom; bloom.threshold=L.thr; renderer.toneMappingExposure=L.expo;
   bloom.enabled=L.bloom>.3;   // 昼档 strength=.14/thr=1.05 本就几乎无输出，但 UnrealBloom 每帧仍跑完整 5 级 mip 链——直接关掉，后处理开销减半
   rim.intensity=L.rim;                                     // 青色轮廓补光是夜景语言，昼档必须关掉大半
-  const goldI = name==='night' ? .5 : (name==='dawn' ? .15 : 0);   // 金顶夜色回归：夜档琉璃自发光
-  matGold.emissiveIntensity=goldI; matGoldAmber.emissiveIntensity=goldI; matGoldG.emissiveIntensity=goldI*.6;
-  ROOF_FIT.forEach(m=>m.emissiveIntensity=m.userData.src.emissiveIntensity);   // 按尺寸配平铺的琉璃跟随母材质
   fx.clouds.forEach(c2=>c2.material.opacity = name==='day'?.5:(name==='dawn'?.38:.05));   // 云分档（夜近隐）
   if(fx.terrainMat) fx.terrainMat.emissiveIntensity = name==='day' ? 0 : (name==='dawn' ? .3 : .42);  // 昼间关地形自发光（长城山体夜景不再泛灰）
   // 地面石材分档着色：昼=青砖本色，晨=暖灰，夜=冷蓝压暗（保住数字孪生夜景）
@@ -2982,7 +2990,7 @@ function applyLights(name){
   matPlatform.color.set(name==='day' ? 0x97a0a4 : (name==='dawn' ? 0x1a2438 : 0x0a1120));
   matLand.color.set      (name==='day' ? 0x8d8f83 : (name==='dawn' ? 0x1e2a40 : 0x0e1727));
   sun2.intensity = name==='night' ? .25 : (name==='dawn' ? .55 : .3);                    // 近景补光分档
-  if(fx.halo) fx.halo.visible=!!L.moon;                                                  // 月晕随月显隐
+  // 月亮/月晕显隐由 applyGoldEmissive 收口（档位 ×「光影」总开关）
   scene.environmentIntensity = name==='day' ? .3 : (name==='dawn' ? .45 : .25);          // IBL 分档（RoomEnvironment 是室内影棚，白天给多了会整体发灰发亮）
   matWater.roughness = name==='day' ? .12 : .6;                                          // 昼水面更镜面（夜拉糙+去金属：月光辉耀不再炸成光斑）
   matWaterMoat.roughness = name==='day' ? .15 : .65;
@@ -2997,6 +3005,7 @@ function applyLights(name){
   document.querySelectorAll('[data-light]').forEach(b=>b.classList.toggle('on',b.dataset.light===name));
   lightMode=name;
   syncEdgeOpacity();   // 档位基准变了：线框开着就保住 0.95，关着就落到新档位值
+  applyGoldEmissive();   // 金顶/窗光/月亮随新档位重估（内部含「光影」总开关门控）
   // 幕次字幕：四幕主题词
   const ACTS={night: activeWorld==='wall' ? '长城夜巡' : '暮色紫禁', dawn:'晨光金顶', day:'正午丹宸'};
   const an2=document.getElementById('actname');
@@ -3326,6 +3335,7 @@ function applyContactShadowVis(){
   const on=renderer.shadowMap.enabled;
   if(fx.contactShadows) fx.contactShadows.forEach(m=>m.visible=on);
   if(fx.cloudShadows) fx.cloudShadows.forEach(m=>m.visible=on);
+  applyGoldEmissive();   // 自发光体（金顶/窗光/月亮）也归「光影」总开关
 }
 function setXray(on){
   solidMats.forEach(m=>{ m.transparent=on; m.opacity=on?.07:1; m.depthWrite=!on; m.needsUpdate=true; });
@@ -3537,7 +3547,7 @@ function animate(){
   // 格扇窗光：夜档分相位呼吸（各殿微差），晨档微光，昼档熄
   // 峰值必须压在 bloom 阈值 0.8 以下：emissiveMap 复用格扇图，图上金线本身接近 1.0，
   // 原来 latGlow 峰值 1.08 会把金线推到远超 1.0，檐下一片糊成白色光团
-  const latGlow = lightMode==='night' ? .30+.07*Math.sin(t*1.1) : (lightMode==='dawn' ? .12 : 0);
+  const latGlow = state.shadow ? (lightMode==='night' ? .30+.07*Math.sin(t*1.1) : (lightMode==='dawn' ? .12 : 0)) : 0;   // 窗光随「光影」归零
   for(let i=0;i<LATTICE_GLOW.length;i++)
     LATTICE_GLOW[i].emissiveIntensity=latGlow*(.78+.22*Math.sin(t*1.1+i*1.73));
   for(let i=0;i<WIND.length;i++) WIND[i].uniforms.uT.value=t;            // 树冠风摆
@@ -3678,6 +3688,7 @@ setTimeout(()=>{ try{ sessionStorage.setItem('gw_reload','0'); }catch(e){} },600
 
 /* ═══════════ 入场 ═══════════ */
 buildMarkers(); rebuildViewButtons();
+applyGoldEmissive();   // 启动归一：构造默认 emissiveIntensity=1 比夜档设计值 .5 亮一倍，统一到助手
 {
   await stage('构建完成 · 数字遗产已就绪',100);   // 让 100% 这一帧真的被画出来，再揭幕
   setTimeout(()=>{
