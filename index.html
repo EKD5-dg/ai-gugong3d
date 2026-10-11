@@ -3455,16 +3455,17 @@ function animate(){
     controls.target.copy(lastLook);   // 与 controls.update() 的 lookAt 保持一致
     camera.lookAt(lastLook);
   }
-  // 扫描特效（贴地雷达波，不切割建筑主体）
-  if(state.scan&&fx.slab.visible){
+  // 扫描特效（贴地雷达波，不切割建筑主体）——与「光影」总开关相与：
+  // 观众关光影时灯光特效一并隐藏（水面灯带/雷达环/光幕同属"光影"语义）
+  if(state.scan&&state.shadow&&fx.slab.visible){
     const range=activeWorld==='wall'?60:22;
     const sy=((t*.16)%1)*range;
     fx.slab.position.y=sy;
     const fade=1-.75*(sy/range);
     fx.slab.material.opacity=(.05*fade)*(0.8+0.2*Math.sin(t*2.2));
   }
-  fx.rings.forEach(r=>r.visible=state.scan);
-  if(state.scan){
+  fx.rings.forEach(r=>r.visible=state.scan&&state.shadow);   // 雷达环随「扫描×光影」双开关
+  if(state.scan&&state.shadow){
     fx.rings.forEach((r,i)=>{
       const s=((t*.25+i*.5)%1);
       const sc=60+s*(activeWorld==='wall'?900:470); r.scale.set(sc,sc,1);
@@ -3507,7 +3508,7 @@ function animate(){
       fx.sweep.material.opacity=Math.max(0,.5*(1-Math.abs(ph-.8)/.5));
     } else fx.sweep.material.opacity=0;
   }
-  if(fx.glints) fx.glints.forEach((p,i)=>{ p.material.opacity=p.userData.o*(.85+.15*Math.sin(t*2.1+i*2.2)); });
+  if(fx.glints) fx.glints.forEach((p,i)=>{ p.material.opacity=(state.shadow?1:0)*p.userData.o*(.85+.15*Math.sin(t*2.1+i*2.2)); });   // 水面灯带随「光影」
   // 音景四幕：风底噪常驻，昼人声，晨钟每 8s
   if(AMBIENCE.ctx&&!AMBIENCE.mute){
     const tgt = lightMode==='night' ? .16 : (lightMode==='dawn' ? .34 : .26);
@@ -3655,7 +3656,8 @@ window.__dbg=()=>({aw:activeWorld,wk:Object.keys(WORLDS),has:!!WORLDS[activeWorl
   gwBuilt,gwKids:gw.children.length,wallPois:POIS_W.length,wallViews:Object.keys(WORLDS.wall.views).length,tourWall:!!tourCurves.wall,
   cs:fx.contactShadows?fx.contactShadows.filter(m=>m.visible).length:-1,
   csAll:fx.contactShadows?fx.contactShadows.length:-1,
-  clds:fx.cloudShadows?fx.cloudShadows.filter(m=>m.visible).length:-1});
+  clds:fx.cloudShadows?fx.cloudShadows.filter(m=>m.visible).length:-1,
+  rings:fx.rings[0].visible, glint:+fx.glints[0].material.opacity.toFixed(3)});
 window.__finishGrow=()=>{ growing=false; city.scale.y=1; clock.getDelta(); renderer.shadowMap.needsUpdate=true; };
 window.__views=()=>WORLDS[activeWorld].views;   // 调试钩子：当前世界视点目录（坐标直读）
 window.__light=()=>({lm:lightMode,hemi:hemi.intensity,amb:amb.intensity,sunI:+sun.intensity.toFixed(3),
