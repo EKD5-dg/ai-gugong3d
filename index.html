@@ -191,7 +191,7 @@
   <div class="row"><span>TRIANGLES</span><span id="st-tri">--</span></div>
   <div class="row"><span>DRAW CALLS</span><span id="st-call">--</span></div>
   <div class="row"><span>CAM</span><span id="st-cam">--</span></div>
-  <div class="row"><span>RENDER</span><span class="ok">WEBGL · ONLINE · r20.4</span></div>
+  <div class="row"><span>RENDER</span><span class="ok">WEBGL · ONLINE · r20.5</span></div>
 </div>
 
 <div id="pois"></div>
@@ -2975,7 +2975,7 @@ function applyLights(name){
   if(fx.moon) fx.moon.visible=!!L.moon&&state.shadow;   // （显隐统一由 applyGoldEmissive 收口）
   fx.stars.material.opacity=.7*L.stars; fx.stars.visible=L.stars>0;
   bloom.strength=L.bloom; bloom.threshold=L.thr; renderer.toneMappingExposure=L.expo;
-  bloom.enabled=L.bloom>.3;   // 昼档 strength=.14/thr=1.05 本就几乎无输出，但 UnrealBloom 每帧仍跑完整 5 级 mip 链——直接关掉，后处理开销减半
+  bloom.enabled=state.shadow&&L.bloom>.3;   // 昼档无输出直接关；「光影」关闭时 bloom 整关——月光照亮的大面积台基/墙体在真机 HDR 上超阈值，bloom 会把整片晕成光柱光带（用户实拍 r20.4），平光夜景必须连泛光一起关
   rim.intensity=L.rim;                                     // 青色轮廓补光是夜景语言，昼档必须关掉大半
   fx.clouds.forEach(c2=>c2.material.opacity = name==='day'?.5:(name==='dawn'?.38:.05));   // 云分档（夜近隐）
   if(fx.terrainMat) fx.terrainMat.emissiveIntensity = name==='day' ? 0 : (name==='dawn' ? .3 : .42);  // 昼间关地形自发光（长城山体夜景不再泛灰）
@@ -3335,6 +3335,7 @@ function applyContactShadowVis(){
   const on=renderer.shadowMap.enabled;
   if(fx.contactShadows) fx.contactShadows.forEach(m=>m.visible=on);
   if(fx.cloudShadows) fx.cloudShadows.forEach(m=>m.visible=on);
+  bloom.enabled=on&&LIGHTS[lightMode].bloom>.3;   // 「光影」关 = 泛光整关：夜档亮面在真机上的 bloom 光柱/光带一并消失
   applyGoldEmissive();   // 自发光体（金顶/窗光/月亮）也归「光影」总开关
 }
 function setXray(on){
