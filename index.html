@@ -1269,6 +1269,7 @@ function palace(o){
   const blob=new THREE.Mesh(new THREE.PlaneGeometry(w+14,d+14),
     new THREE.MeshBasicMaterial({map:blobTex,transparent:true,opacity:.34,depthWrite:false}));
   blob.rotation.x=-Math.PI/2; blob.position.y=.16; g.add(blob);   // 根部接触阴影（补阴影贴图分辨率不足）
+  (fx.contactShadows||(fx.contactShadows=[])).push(blob);   // 登记假影：跟随「光影」开关显隐（见 applyContactShadowVis）
   if(o.interior){
     interior(g,{...o,topY,bm},topY);
   }else{
@@ -3315,7 +3316,16 @@ function toggleState(k){
     sun.castShadow=state.shadow;
     scene.traverse(o=>{ if(o.material){ (Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.needsUpdate=true); } });
     renderer.shadowMap.needsUpdate=true;
+    applyContactShadowVis();
   }
+}
+// 根部接触阴影（blobTex 渐变贴片）与云影是美术假影，不受 shadowMap 开关管辖：
+// 实时阴影关了它们也得藏，否则观众关了「光影」仍看到一块块"影子"。显隐跟随
+// 有效阴影状态——「光影」开关与自动画质降档关影两处都要调。
+function applyContactShadowVis(){
+  const on=renderer.shadowMap.enabled;
+  if(fx.contactShadows) fx.contactShadows.forEach(m=>m.visible=on);
+  if(fx.cloudShadows) fx.cloudShadows.forEach(m=>m.visible=on);
 }
 function setXray(on){
   solidMats.forEach(m=>{ m.transparent=on; m.opacity=on?.07:1; m.depthWrite=!on; m.needsUpdate=true; });
@@ -3410,6 +3420,7 @@ function applyQuality(){
     document.querySelector('[data-toggle="shadow"]').classList.toggle('on',sh);
   }
   renderer.shadowMap.needsUpdate=true;
+  applyContactShadowVis();   // 自动降档关影时，假影也要跟着藏
 }
 const stFps=document.getElementById('st-fps'), stTri=document.getElementById('st-tri'),
       stCall=document.getElementById('st-call'), stCam=document.getElementById('st-cam');
@@ -3641,7 +3652,10 @@ window.__fps=fps;         // 调试钩子：第一人称状态
 window.__dbg=()=>({aw:activeWorld,wk:Object.keys(WORLDS),has:!!WORLDS[activeWorld],wpois:WORLDS[activeWorld]?WORLDS[activeWorld].pois.length:-1,
   tourOn,tourPending,fly:!!fly,cols:COLLIDERS.length,
   lm:lightMode,xray:state.xray,edge:[+edgeMat.opacity.toFixed(3),+edgeMatG.opacity.toFixed(3)],bloomOn:bloom.enabled,
-  gwBuilt,gwKids:gw.children.length,wallPois:POIS_W.length,wallViews:Object.keys(WORLDS.wall.views).length,tourWall:!!tourCurves.wall});
+  gwBuilt,gwKids:gw.children.length,wallPois:POIS_W.length,wallViews:Object.keys(WORLDS.wall.views).length,tourWall:!!tourCurves.wall,
+  cs:fx.contactShadows?fx.contactShadows.filter(m=>m.visible).length:-1,
+  csAll:fx.contactShadows?fx.contactShadows.length:-1,
+  clds:fx.cloudShadows?fx.cloudShadows.filter(m=>m.visible).length:-1});
 window.__finishGrow=()=>{ growing=false; city.scale.y=1; clock.getDelta(); renderer.shadowMap.needsUpdate=true; };
 window.__views=()=>WORLDS[activeWorld].views;   // 调试钩子：当前世界视点目录（坐标直读）
 window.__light=()=>({lm:lightMode,hemi:hemi.intensity,amb:amb.intensity,sunI:+sun.intensity.toFixed(3),
