@@ -2061,8 +2061,16 @@ huabiao(-58,0,-552); huabiao(58,0,-552);
   // 五峰连岭。原来读起来是"光滑绿馒头"，两个原因：噪声按整数格哈希而球面顶点间距约 9 单位，
   // 等于逐顶点独立随机，法线一平均就糊平；且 70 株矮松全挤在山顶，两大片坡面完全光着。
   // 现在换成三倍频平滑值噪声 + 山脚石砌护坡 + 满坡密植，几何与落位共用同一个 surfY。
-  // 五峰：主峰收窄拉高、四辅峰各自成形，原来 2.1 的横向拉伸把五峰摊成一块椭圆煎饼
-  const HILL=[[0,78,1.72,0,.66],[-40,54,1.3,4,.60],[40,54,1.3,9,.60],[-72,40,1.05,2,.52],[72,40,1.05,6,.52]];
+  // 五峰独立成峰。上一版主峰 x 半径 134（=78×1.72）而辅峰中心只在 ±40/±72，
+  // 主峰的"统治区"把两侧整个盖掉，max 复合出来仍是一整块椭圆；
+  // 现在每座峰的 x 半径都小于它与邻居的间距（30/28/26 vs 间距 34），
+  // max 复合在交界处自然形成鞍部折线，五座才各自成顶。
+  // 参数：[中心x, z向半径, x拉伸, 噪声种子, y缩放]；x半径=r*sx2，峰高=r*sy
+  // 首项是一道低宽的基座脊：没有它，五座穹顶之间 max 复合出的鞍部会几乎落回地面，
+  // 读起来是"五个馒头并排"而不是一条连贯山脊上的五座峰
+  const HILL=[[0,62,1.6,13,.225],
+              [0,62,.484,0,.742],[-34,54,.519,4,.648],[34,54,.519,9,.648],
+              [-68,46,.565,2,.587],[68,46,.565,6,.587]];
   const hlat=(ix,iz,sd)=>{const n=Math.sin((ix+sd*31)*127.1+(iz+sd*17)*311.7)*43758.5453;return n-Math.floor(n);};
   const hvnz=(x,z,cell,sd)=>{
     const fx=x/cell,fz=z/cell,ix=Math.floor(fx),iz=Math.floor(fz),tx=fx-ix,tz=fz-iz;
@@ -2070,7 +2078,8 @@ huabiao(-58,0,-552); huabiao(58,0,-552);
     const a=hlat(ix,iz,sd),b=hlat(ix+1,iz,sd),c=hlat(ix,iz+1,sd),d=hlat(ix+1,iz+1,sd);
     return a+(b-a)*sx+(c-a)*sz+(a-b-c+d)*sx*sz;
   };
-  const hbump=(x,z,sd)=>(hvnz(x,z,36,sd)-.5)*10+(hvnz(x,z,14,sd+5)-.5)*4.6+(hvnz(x,z,5.5,sd+11)-.5)*1.9;
+  // 幅值按新尺度收回一点（山体从 268 宽缩到 188，沿用旧幅值会把峰顶啃成碎疙瘩）
+  const hbump=(x,z,sd)=>(hvnz(x,z,34,sd)-.5)*8+(hvnz(x,z,13,sd+5)-.5)*3.6+(hvnz(x,z,5,sd+11)-.5)*1.5;
   const surfY=(x,z)=>{ let y=0;
     for(const [hx,r,sx2,sd,sy] of HILL){
       const q=(x-hx)/(r*sx2), w=z/r;
@@ -2092,20 +2101,19 @@ huabiao(-58,0,-552); huabiao(58,0,-552);
   });
   { // 山脚石砌护坡：把"馒头直接搁在平地上"改成有台基的园山，也给坡脚一条明暗分界
     const foot=new THREE.Mesh(new THREE.CylinderGeometry(1,1.07,3.6,72,1,true),matChan);
-    foot.scale.set(150,1,92); foot.position.y=1.3; hill.add(foot);
+    foot.scale.set(106,1,74); foot.position.y=1.3; hill.add(foot);   // 跟新 footprint（x±94 / z±62）收拢
   }
-  { // 满坡密植矮松：沿 surfY 落位，坡面不再整块裸露。
-    // 第一版种了 280 株但缩到 .5~1.1，在 300 单位宽的山体上只是些绿点，读不出"林木"
+  { // 满坡密植矮松：沿 surfY 落位，坡面不再整块裸露
     const pine=mergeGeo([
       {geo:new THREE.ConeGeometry(1.7,3.4,6), m:new THREE.Matrix4().makeTranslation(0,1.7,0)},
       {geo:new THREE.ConeGeometry(1.15,2.8,6),m:new THREE.Matrix4().makeTranslation(0,3.9,0)}
     ]);
-    const CAP=360, cn=new THREE.InstancedMesh(pine,matHillTree,CAP);
+    const CAP=340, cn=new THREE.InstancedMesh(pine,matHillTree,CAP);
     const Mh=new THREE.Matrix4(), Ss=new THREE.Vector3(); let ti=0;
     for(let k=0;k<CAP*8&&ti<CAP;k++){
-      const x=(Math.random()-.5)*288, z=(Math.random()-.5)*160, y=surfY(x,z);
+      const x=(Math.random()-.5)*200, z=(Math.random()-.5)*136, y=surfY(x,z);
       if(y<1.6) continue;                                  // 山脚与两峰之间的低坳不种
-      const s=.85+Math.random()*.9;
+      const s=.8+Math.random()*.8;
       Mh.makeRotationY(Math.random()*6.28);
       cn.setMatrixAt(ti++,Mh.scale(Ss.set(s,s,s)).setPosition(x,y-.5,z));
     }
@@ -2113,11 +2121,12 @@ huabiao(-58,0,-552); huabiao(58,0,-552);
   }
   const pav=(w,d,bh,rh,x,z)=>{ const y=surfY(x,z)-.6;
     return palace({w,d,bodyH:bh,tiers:0,pyr:true,roofH:rh,x,y,z,collide:false}); };
-  hill.add(pav(16,16,6,8,0,0));      // 万春亭
-  hill.add(pav(11,11,5,6,-30,-4));   // 周赏亭
-  hill.add(pav(11,11,5,6,30,-4));    // 辑芳亭
-  hill.add(pav(10,10,4,5,-58,-9));   // 观妙亭
-  hill.add(pav(10,10,4,5,58,-9));    // 富览亭
+  // 五亭各自压在一座峰顶上（x 与 HILL 的五座中心对齐），不再是一排站在同一道脊上
+  hill.add(pav(16,16,6,8,0,0));       // 万春亭（中峰）
+  hill.add(pav(11,11,5,6,-34,0));     // 周赏亭
+  hill.add(pav(11,11,5,6,34,0));      // 辑芳亭
+  hill.add(pav(10,10,4,5,-68,0));     // 观妙亭
+  hill.add(pav(10,10,4,5,68,0));      // 富览亭
   hill.userData={poiName:'景山万春亭',world:'gugong'};
   city.add(hill);
 }
@@ -2199,6 +2208,10 @@ function terrainH(x,z){
     g.fillStyle=gr;g.fillRect(0,0,32,32);return new THREE.CanvasTexture(c);})();
 function* gwBuildGen(){
   // ── 山体地形（顶点色 + 低多边形科技风）──
+  // 网格密度实测不能再提：340×240（≈7.1m/行）之下 terrainH 的中频各向同性项被混叠掉，
+  // 观感反而干净；加密到 400×300+山脊带 warp（≈4.1m/行）后这些项显形，整片坡面变成
+  // 菱形枕头/quilt（同机位 A/B 已复现，比原网格更差）。要提密度必须先把噪声场重做成
+  // "大尺度地貌 + 细节交给贴图"，不是调采样能解决的。
   const sx=340,sz=240,rw=2600,rd=1700;
   const tgeo=new THREE.PlaneGeometry(rw,rd,sx,sz); tgeo.rotateX(-Math.PI/2);
   const pa=tgeo.attributes.position, colors=new Float32Array(pa.count*3);
