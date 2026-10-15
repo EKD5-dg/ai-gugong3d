@@ -1472,17 +1472,42 @@ function cornerTower(x,z){
   addCollider(x,z,7,7);
   city.add(g); return g;
 }
-// 金水桥（桥板/桥墩/栏板/碾盘全部同材质汉白玉：6 box 合并为 1 个 Mesh × 5 桥）
+// 金水桥（内金水河 214×22，河面 y=.3；五桥并排跨河，桥位与宽度单一数据源：
+// 建模、河面碰撞、第一人称桥面高度都读它，避免三处各写一套数字对不上）
+const JINSHUI=[[-48,5.5],[-26,6.5],[0,10],[26,6.5],[48,5.5]];
 function bridge(x,w){
   const g=new THREE.Group(); g.position.set(x,0,-362);
-  mergedBoxes(g,[
-    {w:w,     h:1.5,  d:30, x:0,y:2.1, z:0,     m:matMarble},
-    {w:w*.78, h:1.42, d:30, x:0,y:.64, z:0,     m:matMarble},   // 桥墩实体：填实桥板底(1.35)到水下，消除临水悬空夹缝
-    {w:w*.9,  h:.9,   d:1,  x:0,y:3.1, z: 13.6, m:matMarble},
-    {w:w*.9,  h:.9,   d:1,  x:0,y:3.1, z:-13.6, m:matMarble},
-    {w:w,     h:.6,   d:3,  x:0,y:.8,  z: 16.2, m:matMarble},
-    {w:w,     h:.6,   d:3,  x:0,y:.8,  z:-16.2, m:matMarble},
-  ]);
+  // 河槽是"石壁深槽"：槽底 -2.4、水面 -1.1、两岸壁顶 1.2。
+  // 券顶 1.3 略高出堤顶——这正是实景里金水桥的读法：从堤上能看到拱环探出来，
+  // 而不是桥贴着地面横一道白栏杆（第一版沉得不够，水几乎与广场齐平，桥就"没跨东西"）
+  const TOP=2.3, BOT=-2.4, SPAN=11, CROWN=1.3;
+  const p=new THREE.Shape();
+  p.moveTo(-15,BOT); p.lineTo(-15,TOP); p.lineTo(15,TOP); p.lineTo(15,BOT); p.lineTo(SPAN,BOT);
+  for(let i=1;i<=18;i++){const th=i/18*Math.PI; p.lineTo(SPAN*Math.cos(th), BOT+(CROWN-BOT)*Math.sin(th));}
+  p.lineTo(-15,BOT); p.closePath();
+  const bg=new THREE.ExtrudeGeometry(p,{depth:w,bevelEnabled:false,steps:1});
+  bg.translate(0,0,-w/2); bg.rotateY(Math.PI/2);
+  const body=new THREE.Mesh(bg,matMarble); body.castShadow=true; body.receiveShadow=true; g.add(body);
+  // 桥堋踏跺：两端四级（0.1→2.3），把桥面平顺地收到广场
+  const rail=[];
+  for(const s of [-1,1]) for(let i=0;i<4;i++){
+    const yTop=TOP-(i+1)*.55;
+    rail.push({geo:new THREE.BoxGeometry(w+.4,yTop-.05,.8),
+      m:new THREE.Matrix4().makeTranslation(0,(yTop+.05)/2,s*(15.4+i*.8))});
+  }
+  // 栏杆：地栿 + 栏板 + 望柱 + 石榴头。柱距放宽到 3m，否则远看是一排白钉子而不是石栏
+  const half=w/2-.45, n=Math.max(5,Math.round(30/3.0));
+  for(const s of [-1,1]){
+    rail.push({geo:new THREE.BoxGeometry(.66,.24,30.6), m:new THREE.Matrix4().makeTranslation(s*half,TOP+.12,0)});
+    rail.push({geo:new THREE.BoxGeometry(.34,.9,29.8),  m:new THREE.Matrix4().makeTranslation(s*half,TOP+.7,0)});
+    for(let i=0;i<=n;i++){
+      const z=-15+i*30/n;
+      rail.push({geo:new THREE.BoxGeometry(.64,1.2,.64), m:new THREE.Matrix4().makeTranslation(s*half,TOP+.6,z)});
+      rail.push({geo:new THREE.SphereGeometry(.2,9,7),   m:new THREE.Matrix4().makeTranslation(s*half,TOP+1.32,z)});
+    }
+  }
+  const rm=new THREE.Mesh(mergeGeo(rail),matMarble);
+  rm.castShadow=true; rm.receiveShadow=true; g.add(rm);
   return g;
 }
 // 鎏金铜缸
@@ -1710,7 +1735,14 @@ function plazaMat(w,d,tint=1){
   fx.platEdge=new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts),
     new THREE.LineBasicMaterial({color:0x2fd9ff,transparent:true,opacity:.85,toneMapped:false}));
   city.add(fx.platEdge);
-  const land=new THREE.Mesh(new THREE.ShapeGeometry(roundedShape(748,956,20),8),matLand);
+  // land 是 y=.1 的整面地面。河槽下沉到 -1.1 之后必须在这里也开一条口，
+  // 否则水整个埋在地底下，看上去是一条灰白板（拾取射线证实命中的是 matLand 而非 matWater）
+  const landS=roundedShape(748,956,20);
+  { const ch=new THREE.Path();   // shape 的 y 轴映射到世界 -z：河道世界 z∈[-374,-350] → shape y∈[350,374]
+    ch.moveTo(-107,350); ch.lineTo(107,350); ch.lineTo(107,374); ch.lineTo(-107,374); ch.closePath();
+    landS.holes.push(ch);
+  }
+  const land=new THREE.Mesh(new THREE.ShapeGeometry(landS,8),matLand);
   land.geometry.rotateX(-Math.PI/2); land.position.y=.1; city.add(land);
   const moatS=roundedShape(872,1080,48); moatS.holes.push(roundedPath(new THREE.Path(),756,964,24));
   const moat=new THREE.Mesh(new THREE.ShapeGeometry(moatS,10),matWaterMoat);
@@ -1728,21 +1760,34 @@ function plazaMat(w,d,tint=1){
     const pts=[[-w/2,-d/2],[w/2,-d/2],[w/2,d/2],[-w/2,d/2]].map(a=>new THREE.Vector3(a[0]+x,.24,a[1]+z));
     city.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts),zoneLine));
   };
-  mkZone(214,940,0,10,1);
+  // 内金水河是"石壁河槽"，所以广场地面要在 z∈[-374,-350] 处断开留出槽口
+  // （原来是一条整面 y=.22 的广场 + 一张 y=.3 的水面贴在上面，水看着像摊在地上）
+  mkZone(214,86,0,-417,1);
+  mkZone(214,830,0,65,1);
   mkZone(236,300,0,-45,1.14);   // 三大殿台基区：环以汉白玉，稍亮
   mkZone(360,220,0,-590,1);
   mkZone(300,170,0,565,1);
-  const river=new THREE.Mesh(new THREE.PlaneGeometry(214,22),matWater);
-  river.rotation.x=-Math.PI/2; river.position.set(0,.3,-362); city.add(river);
+  const river=new THREE.Mesh(new THREE.PlaneGeometry(214,24),matWater);
+  river.rotation.x=-Math.PI/2; river.position.set(0,-1.1,-362); city.add(river);
+  // 河槽石壁/槽底用中灰风化石，比桥身暗两档：汉白玉桥 + 汉白玉壁 + 灰水三者同明度时，
+  // 拱洞和水面全部糊成一片，桥就"没跨东西"
+  const matChan=matWith('chan',()=>std({map:rep(texStone,3,1),color:0x8d8578,roughness:.95}));
+  box(city,214,.3,24, 0,-2.55,-362, matChan);      // 河槽底（与 bridge() 的 BOT=-2.4 齐平）
+  { // 河面不可踏水：只放行五座桥的桥面宽度，桥间与桥侧水面挡死
+    let cur=-107;
+    const seg=(a,b)=>{ if(b-a>.3) addCollider((a+b)/2,-362,(b-a)/2,12); };
+    for(const [bx,bw] of JINSHUI){ const free=bw/2-1.0; seg(cur,bx-free); cur=bx+free; }
+    seg(cur,107);
+  }
   // 御路：中轴石板甬道（原为一条近黑窄带，昼档读成地面裂缝）
   const matYulu=matWith('yulu',()=>{const m=std({map:rep(texPave,1.4,15),roughness:.95});
     m.userData.tint=1.1; PLAZA_MATS.push(m); return m;});
-  const yuluStrip=new THREE.Mesh(new THREE.PlaneGeometry(6.5,108),matYulu);
-  yuluStrip.rotation.x=-Math.PI/2; yuluStrip.position.set(0,.34,-300); city.add(yuluStrip);   // 御路北段（桥-乾清门）
-  const yuluStrip2=new THREE.Mesh(new THREE.PlaneGeometry(6.5,84),matYulu);
-  yuluStrip2.rotation.x=-Math.PI/2; yuluStrip2.position.set(0,.34,-414); city.add(yuluStrip2); // 御路南段（午门城台根收边）
-  box(city,214,1.2,3, 0,.55,-374, matMarble);
-  box(city,214,1.2,3, 0,.55,-350, matMarble);
+  const yuluStrip=new THREE.Mesh(new THREE.PlaneGeometry(6.5,104),matYulu);
+  yuluStrip.rotation.x=-Math.PI/2; yuluStrip.position.set(0,.34,-298); city.add(yuluStrip);    // 御路北段：止于河北岸
+  const yuluStrip2=new THREE.Mesh(new THREE.PlaneGeometry(6.5,80),matYulu);
+  yuluStrip2.rotation.x=-Math.PI/2; yuluStrip2.position.set(0,.34,-416); city.add(yuluStrip2); // 御路南段：止于河南岸
+  box(city,214,3.6,3, 0,-.6,-374, matChan);   // 河槽石壁：底 -2.4 → 顶 1.2（券顶 1.3 略高出堤顶）
+  box(city,214,3.6,3, 0,-.6,-350, matChan);
   const grid=new THREE.GridHelper(3400,68,0x0c2c3e,0x081b28);
   grid.material.transparent=true; grid.material.opacity=.3; grid.position.y=-7; city.add(grid);
   // 中轴光脉
@@ -1790,7 +1835,7 @@ await stage('正在升起殿宇楼阁',43);
 // —— 金水桥 ×5
 {
   const g=new THREE.Group();
-  g.add(bridge(0,10)); g.add(bridge(-26,6.5)); g.add(bridge(26,6.5)); g.add(bridge(-48,5.5)); g.add(bridge(48,5.5));
+  JINSHUI.forEach(([bx,bw])=>g.add(bridge(bx,bw)));
   g.userData.poiName='内金水桥'; g.userData.world='gugong'; city.add(g);
 }
 // —— 太和门
@@ -2715,7 +2760,7 @@ renderer.compile(scene,camera);
 const POIS_G=[
  {name:'午门',en:'MERIDIAN GATE',year:'明永乐十八年 · 1420',pos:[0,42,-480],view:{p:[52,14,-594],t:[-4,22,-482]},
   desc:'紫禁城正门。居中向阳，位当子午，故名午门。城台上五凤楼巍然，明清颁朔、献俘大典在此举行，凯旋将士亦于此受俘。'},
- {name:'内金水桥',en:'GOLDEN WATER BRIDGES',year:'明代 · 内金水河',pos:[0,11,-362],view:{p:[-38,14,-420],t:[4,4,-364]},
+ {name:'内金水桥',en:'GOLDEN WATER BRIDGES',year:'明代 · 内金水河',pos:[0,6,-362],view:{p:[-44,4.6,-398],t:[4,2.0,-364]},
   desc:'跨内金水河的五座汉白玉石桥，中为御路桥，两侧依次为王公桥、品级桥。民间有"暗合五德"之说。每一块栏板望柱均可放大细看。'},
  {name:'太和门',en:'GATE OF SUPREME HARMONY',year:'明永乐十八年 · 1420',pos:[0,32,-300],view:{p:[-44,12,-360],t:[4,16,-302]},
   desc:'外朝正门，明代"御门听政"之所。门前广场开阔数万平，白石栏板如雪，曾是明代常朝与重大典礼的仪仗之所。'},
@@ -2992,13 +3037,16 @@ function applyLights(name){
   sun2.intensity = name==='night' ? .25 : (name==='dawn' ? .55 : .3);                    // 近景补光分档
   // 月亮/月晕显隐由 applyGoldEmissive 收口（档位 ×「光影」总开关）
   scene.environmentIntensity = name==='day' ? .3 : (name==='dawn' ? .45 : .25);          // IBL 分档（RoomEnvironment 是室内影棚，白天给多了会整体发灰发亮）
-  matWater.roughness = name==='day' ? .12 : .6;                                          // 昼水面更镜面（夜拉糙+去金属：月光辉耀不再炸成光斑）
-  matWaterMoat.roughness = name==='day' ? .15 : .65;
+  // 内金水河是 24m 宽的石壁深槽：掠射角下 .12 的镜面会把整条河照成天空的浅灰，
+  // 和汉白玉桥、石壁同明度后桥就"没跨东西"。拉糙到 .34 让深色本体色主导。
+  matWater.roughness = name==='day' ? .34 : .6;                                          // 夜拉糙+去金属：月光辉耀不再炸成光斑
+  matWaterMoat.roughness = name==='day' ? .15 : .65;                                     // 护城河是开阔水面，保留天空镜面
   matWater.metalness = name==='day' ? .2 : .02;
   matWaterMoat.metalness = name==='day' ? .2 : .02;
-  matWater.envMapIntensity = name==='day' ? .75 : (name==='dawn' ? .3 : .12);             // 夜档压低环境反射。注意：原写法 if(matWaterMoat.envMap){...} 条件恒 null，整段从未生效——护城河无独立 envMap，fallback 反射 RoomEnvironment 影棚，夜档被 0.4 强度刷成银白
+  matWater.envMapIntensity = name==='day' ? .3 : (name==='dawn' ? .3 : .12);             // 夜档压低环境反射。注意：原写法 if(matWaterMoat.envMap){...} 条件恒 null，整段从未生效——护城河无独立 envMap，fallback 反射 RoomEnvironment 影棚，夜档被 0.4 强度刷成银白
   matWaterMoat.envMapIntensity = name==='day' ? .4 : (name==='dawn' ? .16 : .06);
-  matWaterMoat.roughness = matWater.roughness;
+  // 原来这里还有一行 matWaterMoat.roughness = matWater.roughness，把上一行护城河自己的
+  // .15/.65 整个覆盖掉（护城河实际一直在用内金水河的 .12/.6）。两条水面各有参数，不再互相抄。
   if(fx.crowd){ fx.crowd.count = name==='day' ? fx.crowdMax : (name==='dawn' ? Math.floor(fx.crowdMax*.4) : Math.floor(fx.crowdMax*.15)); }
   if(fx.glints) fx.glints.forEach(p=>{ p.userData.o = name==='night' ? .5 : (name==='dawn' ? .2 : 0); });
   // —— 英雄时刻结束 ——
@@ -3168,10 +3216,14 @@ function groundAt(x,z){
       [330,150,24,22],[330,230,26.5,19],[330,310,29,22],[245,-235,32,17],[-245,-235,32,17]]){
     if(Math.abs(x-px)<=phw&&Math.abs(z-pz)<=phd){ h=3; if(h>g)g=h; break; }
   }
-  // 金水桥桥面（仅五座桥体范围，桥间河面不抬升）
-  if(Math.abs(z+362)<15){
-    for(const [bcx,bhw] of [[0,5],[-26,3.25],[26,3.25],[-48,2.75],[48,2.75]])
-      if(Math.abs(x-bcx)<=bhw){ h=2.9; if(h>g)g=h; break; }
+  // 金水桥桥面 + 两端桥堋踏跺缓坡（与 bridge() 同源：桥面 2.4，z∈[15,19] 线性落地）
+  { const dz=Math.abs(z+362);
+    for(const [bx,bw] of JINSHUI){
+      if(Math.abs(x-bx)>bw/2-1.0) continue;
+      h = dz<15 ? 2.4 : (dz<19 ? .1+2.3*(19-dz)/4 : null);
+      if(h!==null&&h>g)g=h;
+      break;
+    }
   }
   return g;
 }
