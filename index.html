@@ -799,6 +799,8 @@ const WIND=[];
 const matTrunk   = std({color:0x243328,roughness:.95});
 const matHill    = std({color:0x0e2f26,roughness:.95});
 const matHillTree= std({color:0x1d3a28,roughness:1});   // 景山山脊矮松
+// 风化石：河槽石壁与景山山脚护坡共用。比汉白玉暗两档，否则与桥身/山体同明度读不出层次
+const matChan    = std({map:rep(texStone,3,1),color:0x8d8578,roughness:.95});
 const matCaihua  = std({color:0x143a46,roughness:.75});   // 彩画枋
 const matChair   = std({color:0x9c2331,roughness:.5,emissive:0x1a0406}); // 宝座椅披
 const matThroneGold=std({color:0xc9a24a,metalness:.65,roughness:.34,emissive:0x120c02}); // 髹金雕龙
@@ -1604,37 +1606,44 @@ function mergeGeo(items){
 const CITY_TREES=[];
 function tree(x,z,s=1,kind=1){ CITY_TREES.push({x,z,s,kind}); }
 function buildTreeVariant(kind){
-  if(kind===0){ // 古柏：柱状密冠（多层叠球，逐层提亮，柏木剪影）
+  const T=(x,y,z)=>new THREE.Matrix4().makeTranslation(x,y,z);
+  // 冠团一律用 Icosahedron + 大幅抖动：球面的光滑轮廓无论怎么堆都像"菜/气球"，
+  // 多面体打散后才有枝叶参差的边沿（jitterGeo 按坐标哈希，共点同移不会裂面）
+  const blob=(r,jit)=>jitterGeo(new THREE.IcosahedronGeometry(r,1), jit);
+  if(kind===0){
+    // 古柏：下段是看得见的裸干，上段才是窄柱状密冠——原来冠从 y=2.35 就开始，
+    // 把整根干埋了进去，远看等于"绿团插在地上"
     const trunk=mergeGeo([
-      {geo:new THREE.CylinderGeometry(.3,.5,2.8,8),m:new THREE.Matrix4().makeTranslation(0,1.4,0)}
+      {geo:new THREE.CylinderGeometry(.2,.52,5.4,7), m:T(0,2.7,0)},
+      {geo:new THREE.CylinderGeometry(.5,.95,.6,7),  m:T(0,.28,0)}   // 根颈外张：树是长在地上不是浮着
     ]);
-    const items=[];
-    const layers=[[2.4,1.15,.8],[3.6,.95,.82],[4.7,.72,.8],[5.6,.45,.75]];
-    layers.forEach(([ly,r,ry],k)=>{
-      const n=3+(k%2);
-      for(let b=0;b<n;b++){
-        const a=(b/n+k*.7)*Math.PI*2, off=(k===0?.42:.5)*(.7+.3*((b*37)%10)/10);
-        const col=new THREE.Color().setHSL(.36+Math.random()*.03,.42,.05+.028*k+Math.random()*.02);
-        items.push({geo:jitterGeo(new THREE.SphereGeometry(r*(.75+.5*Math.random()),9,7),.08),
-          m:new THREE.Matrix4().makeTranslation(Math.cos(a)*off,ly+(Math.random()-.5)*.5,Math.sin(a)*off)
-            .multiply(new THREE.Matrix4().makeScale(1,ry,1)),color:col});
-      }
-    });
+    const items=[], N=7;
+    for(let k=0;k<N;k++){
+      const t=k/(N-1);
+      const r=(1.5-1.0*t)*(.82+.34*Math.random());
+      const col=new THREE.Color().setHSL(.35+t*.015,.46,.038+.07*t);
+      items.push({geo:blob(r,.3),
+        m:T((Math.random()-.5)*.4, 4.9+t*4.6, (Math.random()-.5)*.4)
+          .multiply(new THREE.Matrix4().makeScale(.82,1.62,.82)),color:col});
+    }
     return {canopy:mergeGeo(items),trunk};
   }
-  // 宫槐：曲干阔卵冠（外围垂团+顶部亮团，逐团色差）
+  // 宫槐：4.6m 裸干 + 分叉主枝，阔卵冠压在枝上
   const trunk=mergeGeo([
-    {geo:new THREE.CylinderGeometry(.3,.55,3.4,8),m:new THREE.Matrix4().makeTranslation(0,1.7,0)},
-    {geo:new THREE.CylinderGeometry(.16,.22,2.4,7),
-     m:new THREE.Matrix4().makeTranslation(.9,3.9,0).multiply(new THREE.Matrix4().makeRotationZ(.55))}
+    {geo:new THREE.CylinderGeometry(.26,.68,4.6,8),  m:T(0,2.3,0)},
+    {geo:new THREE.CylinderGeometry(.6,1.05,.55,8),  m:T(0,.26,0)},
+    {geo:new THREE.CylinderGeometry(.11,.26,3.2,6),  m:T(-1.05,5.0,.25).multiply(new THREE.Matrix4().makeRotationZ(.62))},
+    {geo:new THREE.CylinderGeometry(.11,.26,3.2,6),  m:T(1.05,5.15,-.25).multiply(new THREE.Matrix4().makeRotationZ(-.66))},
+    {geo:new THREE.CylinderGeometry(.09,.2,2.6,6),   m:T(.1,5.8,0).multiply(new THREE.Matrix4().makeRotationX(.42))}
   ]);
   const items=[];
-  const blobs=[[-1.25,4.7,.95,1.0],[1.3,4.9,1.0,1.05],[0,5.7,.85,1.1],[-.95,5.2,.78,.95],[1.05,5.8,.68,1.0],
-               [0,4.4,.8,.88],[-.6,6.1,.6,.95],[.7,4.3,.7,.9],[-.3,5.4,.72,1.0],[.35,6.2,.5,.9]];
+  const blobs=[[-2.35,6.0,1.15,.68],[2.4,6.15,1.2,.68],[-1.3,5.5,1.0,.66],[1.35,5.6,1.05,.66],
+               [0,7.5,1.85,.6],[-1.6,7.0,1.25,.62],[1.65,7.1,1.2,.62],[0,6.1,1.6,.7],
+               [-.6,8.1,1.15,.55],[.8,8.0,1.05,.55]];
   blobs.forEach(([bx,by,r2,ry])=>{
-    const col=new THREE.Color().setHSL(.31+Math.random()*.05,.4,.065+(by-4)*.028+Math.random()*.02);
-    items.push({geo:jitterGeo(new THREE.SphereGeometry(r2,10,8),.09),
-      m:new THREE.Matrix4().makeTranslation(bx+(Math.random()-.5)*.5,by,(Math.random()-.5)*.9)
+    const col=new THREE.Color().setHSL(.30+Math.random()*.05,.44,.05+(by-5.5)*.028+Math.random()*.02);
+    items.push({geo:blob(r2,.28),
+      m:T(bx+(Math.random()-.5)*.5,by,(Math.random()-.5)*.9)
         .multiply(new THREE.Matrix4().makeScale(1,ry,1)),color:col});
   });
   return {canopy:mergeGeo(items),trunk};
@@ -1769,9 +1778,8 @@ function plazaMat(w,d,tint=1){
   mkZone(300,170,0,565,1);
   const river=new THREE.Mesh(new THREE.PlaneGeometry(214,24),matWater);
   river.rotation.x=-Math.PI/2; river.position.set(0,-1.1,-362); city.add(river);
-  // 河槽石壁/槽底用中灰风化石，比桥身暗两档：汉白玉桥 + 汉白玉壁 + 灰水三者同明度时，
-  // 拱洞和水面全部糊成一片，桥就"没跨东西"
-  const matChan=matWith('chan',()=>std({map:rep(texStone,3,1),color:0x8d8578,roughness:.95}));
+  // 河槽石壁/槽底用中灰风化石（matChan，见材质区），比桥身暗两档：
+  // 汉白玉桥 + 汉白玉壁 + 灰水三者同明度时，拱洞和水面全部糊成一片，桥就"没跨东西"
   box(city,214,.3,24, 0,-2.55,-362, matChan);      // 河槽底（与 bridge() 的 BOT=-2.4 齐平）
   { // 河面不可踏水：只放行五座桥的桥面宽度，桥间与桥侧水面挡死
     let cur=-107;
@@ -2050,47 +2058,66 @@ huabiao(-58,0,-552); huabiao(58,0,-552);
 {
   const hill=new THREE.Group(); hill.position.set(0,0,660);
   // 五峰连岭：东西拉长 + 噪声微扰的多瓣山体（替代"三只圆球"剪影），表面矮松覆盖
-  [[0,78,2.1,0],[-40,54,1.3,4],[40,54,1.3,9],[-72,40,1.05,2],[72,40,1.05,6]].forEach(([hx,r,sx2,sd])=>{
-    const hg2=new THREE.SphereGeometry(r,28,18,0,Math.PI*2,0,Math.PI/2);
+  // 五峰连岭。原来读起来是"光滑绿馒头"，两个原因：噪声按整数格哈希而球面顶点间距约 9 单位，
+  // 等于逐顶点独立随机，法线一平均就糊平；且 70 株矮松全挤在山顶，两大片坡面完全光着。
+  // 现在换成三倍频平滑值噪声 + 山脚石砌护坡 + 满坡密植，几何与落位共用同一个 surfY。
+  // 五峰：主峰收窄拉高、四辅峰各自成形，原来 2.1 的横向拉伸把五峰摊成一块椭圆煎饼
+  const HILL=[[0,78,1.72,0,.66],[-40,54,1.3,4,.60],[40,54,1.3,9,.60],[-72,40,1.05,2,.52],[72,40,1.05,6,.52]];
+  const hlat=(ix,iz,sd)=>{const n=Math.sin((ix+sd*31)*127.1+(iz+sd*17)*311.7)*43758.5453;return n-Math.floor(n);};
+  const hvnz=(x,z,cell,sd)=>{
+    const fx=x/cell,fz=z/cell,ix=Math.floor(fx),iz=Math.floor(fz),tx=fx-ix,tz=fz-iz;
+    const sx=tx*tx*(3-2*tx),sz=tz*tz*(3-2*tz);
+    const a=hlat(ix,iz,sd),b=hlat(ix+1,iz,sd),c=hlat(ix,iz+1,sd),d=hlat(ix+1,iz+1,sd);
+    return a+(b-a)*sx+(c-a)*sz+(a-b-c+d)*sx*sz;
+  };
+  const hbump=(x,z,sd)=>(hvnz(x,z,36,sd)-.5)*10+(hvnz(x,z,14,sd+5)-.5)*4.6+(hvnz(x,z,5.5,sd+11)-.5)*1.9;
+  const surfY=(x,z)=>{ let y=0;
+    for(const [hx,r,sx2,sd,sy] of HILL){
+      const q=(x-hx)/(r*sx2), w=z/r;
+      if(q*q+w*w<1) y=Math.max(y, Math.sqrt(1-q*q-w*w)*r*sy + hbump(x,z,sd)*sy);
+    }
+    return y;
+  };
+  HILL.forEach(([hx,r,sx2,sd,sy])=>{
+    const hg2=new THREE.SphereGeometry(r,48,28,0,Math.PI*2,0,Math.PI/2);
     const pa2=hg2.attributes.position;
     for(let i=0;i<pa2.count;i++){
       const px=pa2.getX(i), pz=pa2.getZ(i), py=pa2.getY(i);
-      const n=(vhash(Math.round(px)+sd,Math.round(pz)+sd*3)-.5)*6.5*(py/r);
-      pa2.setY(i,py+n);
-      pa2.setX(i,px*sx2);
+      pa2.setY(i, py+hbump(hx+px*sx2,pz,sd));
+      pa2.setX(i, px*sx2);
     }
     hg2.computeVertexNormals();
     const m=new THREE.Mesh(hg2,matHill);
-    m.scale.y=.56; m.position.x=hx; hill.add(m);
+    m.scale.y=sy; m.position.x=hx; hill.add(m);
   });
-  { // 山脊植被：矮松剪影（打破光滑"蛋壳"受光面）
-    // 三层叠锥（仿长城松岭树形），替代单节圆锥的简陋剪影
-    const hillPineG=mergeGeo([
-      {geo:new THREE.ConeGeometry(2.0,2.6,7),m:new THREE.Matrix4().makeTranslation(0,.95,0)},
-      {geo:new THREE.ConeGeometry(1.42,2.2,7),m:new THREE.Matrix4().makeTranslation(0,2.5,0)},
-      {geo:new THREE.ConeGeometry(.82,1.7,6),m:new THREE.Matrix4().makeTranslation(0,3.9,0)},
-    ]);
-    const cn=new THREE.InstancedMesh(hillPineG,matHillTree,70);
-    const tk=new THREE.InstancedMesh(new THREE.CylinderGeometry(.22,.32,1.6,5),matTrunk,70);
-    const Mh=new THREE.Matrix4(); let ti=0;
-    [[0,78,2.1],[-40,54,1.3],[40,54,1.3],[-72,40,1.05],[72,40,1.05]].forEach(([hx,r,sx2])=>{
-      for(let k=0;k<14&&ti<70;k++){
-        const a=vhash(k*3+hx,hx+7)*Math.PI*2, rr=Math.sqrt(vhash(k*5+1,hx+k))*.78;
-        const lx=Math.cos(a)*r*rr*.5, lz=Math.sin(a)*r*rr*.5;
-        const ly=Math.sqrt(Math.max(0,1-(lx/(r*sx2))**2-(lz/r)**2))*r*.56;
-        Mh.makeRotationY(vhash(k+2,hx)*6.28);
-        Mh.setPosition(hx+lx,ly+2.1,lz); cn.setMatrixAt(ti,Mh);
-        Mh.setPosition(hx+lx,ly+.6,lz); tk.setMatrixAt(ti,Mh);
-        ti++;
-      }
-    });
-    cn.count=tk.count=ti; hill.add(cn,tk);
+  { // 山脚石砌护坡：把"馒头直接搁在平地上"改成有台基的园山，也给坡脚一条明暗分界
+    const foot=new THREE.Mesh(new THREE.CylinderGeometry(1,1.07,3.6,72,1,true),matChan);
+    foot.scale.set(150,1,92); foot.position.y=1.3; hill.add(foot);
   }
-  hill.add(palace({w:16,d:16,bodyH:6,tiers:0,pyr:true,roofH:8,x:0,y:41,z:0,collide:false}));    // 万春亭
-  hill.add(palace({w:11,d:11,bodyH:5,tiers:0,pyr:true,roofH:6,x:-30,y:30,z:-4,collide:false})); // 周赏亭
-  hill.add(palace({w:11,d:11,bodyH:5,tiers:0,pyr:true,roofH:6,x:30,y:30,z:-4,collide:false}));  // 辑芳亭
-  hill.add(palace({w:10,d:10,bodyH:4,tiers:0,pyr:true,roofH:5,x:-58,y:28,z:-9,collide:false})); // 观妙亭
-  hill.add(palace({w:10,d:10,bodyH:4,tiers:0,pyr:true,roofH:5,x:58,y:28,z:-9,collide:false}));  // 富览亭
+  { // 满坡密植矮松：沿 surfY 落位，坡面不再整块裸露。
+    // 第一版种了 280 株但缩到 .5~1.1，在 300 单位宽的山体上只是些绿点，读不出"林木"
+    const pine=mergeGeo([
+      {geo:new THREE.ConeGeometry(1.7,3.4,6), m:new THREE.Matrix4().makeTranslation(0,1.7,0)},
+      {geo:new THREE.ConeGeometry(1.15,2.8,6),m:new THREE.Matrix4().makeTranslation(0,3.9,0)}
+    ]);
+    const CAP=360, cn=new THREE.InstancedMesh(pine,matHillTree,CAP);
+    const Mh=new THREE.Matrix4(), Ss=new THREE.Vector3(); let ti=0;
+    for(let k=0;k<CAP*8&&ti<CAP;k++){
+      const x=(Math.random()-.5)*288, z=(Math.random()-.5)*160, y=surfY(x,z);
+      if(y<1.6) continue;                                  // 山脚与两峰之间的低坳不种
+      const s=.85+Math.random()*.9;
+      Mh.makeRotationY(Math.random()*6.28);
+      cn.setMatrixAt(ti++,Mh.scale(Ss.set(s,s,s)).setPosition(x,y-.5,z));
+    }
+    cn.count=ti; sh(cn); hill.add(cn);
+  }
+  const pav=(w,d,bh,rh,x,z)=>{ const y=surfY(x,z)-.6;
+    return palace({w,d,bodyH:bh,tiers:0,pyr:true,roofH:rh,x,y,z,collide:false}); };
+  hill.add(pav(16,16,6,8,0,0));      // 万春亭
+  hill.add(pav(11,11,5,6,-30,-4));   // 周赏亭
+  hill.add(pav(11,11,5,6,30,-4));    // 辑芳亭
+  hill.add(pav(10,10,4,5,-58,-9));   // 观妙亭
+  hill.add(pav(10,10,4,5,58,-9));    // 富览亭
   hill.userData={poiName:'景山万春亭',world:'gugong'};
   city.add(hill);
 }
@@ -2794,7 +2821,7 @@ const POIS_G=[
   desc:'外朝东路殿宇，明代多作太子讲学/经筵之所，清代经筵讲学之所（太子居所屡有变动，非固定东宫）。北侧文渊阁为皇家藏书楼，清代《四库全书》曾藏于此。'},
  {name:'武英殿',en:'HALL OF MARTIAL VALOR',year:'明永乐 · 外朝西路',pos:[-245,14,-235],view:{p:[-208,14,-208],t:[-245,10,-235]},
   desc:'外朝西路殿宇，明代曾为皇帝便殿/斋居之所，清代改为修书处刊刻"殿版"。据载1644年李自成曾在此举行即位仪式。'},
- {name:'景山万春亭',en:'WANCHUN PAVILION',year:'清乾隆十五年 · 1750',pos:[0,54,660],view:{p:[2,68,586],t:[0,46,660]},
+ {name:'景山万春亭',en:'WANCHUN PAVILION',year:'清乾隆十五年 · 1750',pos:[0,58,660],view:{p:[0,64,712],t:[0,26,430]},
   desc:'景山之巅，北京中轴线制高点。登亭南望，紫禁城金顶琉璃一览无余——此刻脚下，正是你眼前的整座数字孪生城。'},
 ];
 // 长城 POI：全部长在 GW 数据（关城/敌楼/烽火台坐标）上，GW 砌造完成后由 afterGWBuilt() 填入
@@ -3025,7 +3052,9 @@ function applyLights(name){
   fx.clouds.forEach(c2=>c2.material.opacity = name==='day'?.5:(name==='dawn'?.38:.05));   // 云分档（夜近隐）
   if(fx.terrainMat) fx.terrainMat.emissiveIntensity = name==='day' ? 0 : (name==='dawn' ? .3 : .42);  // 昼间关地形自发光（长城山体夜景不再泛灰）
   // 地面石材分档着色：昼=青砖本色，晨=暖灰，夜=冷蓝压暗（保住数字孪生夜景）
-  const gc = name==='day' ? 0xd6d0c4 : (name==='dawn' ? 0x8d8189 : 0x2a3a55);   // 昼档留一点余量，别顶满
+  // 昼档墁砖底色：0xd6d0c4 近白，大视距下整片中轴广场糊成一块白板，青砖缝全看不见。
+  // 压到中性暖灰（真实条石/青砖在正午的观感），砖缝对比才留得住
+  const gc = name==='day' ? 0xaba69b : (name==='dawn' ? 0x8d8189 : 0x2a3a55);
   const ge = name==='day' ? .03 : (name==='dawn' ? .04 : 0);                             // 天光补偿降到配角
   PLAZA_MATS.forEach(m=>{ m.color.set(gc).multiplyScalar(m.userData.tint); m.emissive.set(0x8fa3bd); m.emissiveIntensity=ge; });
   fx.platEdge.material.opacity = name==='day' ? .1 : (name==='dawn' ? .42 : .85);        // 昼档收掉地台发光边线
