@@ -1523,6 +1523,38 @@ function wingCorridor(parent,x,z,len,y){
   eaveCorners(g,bw+7,len+5,4.0);
   parent.add(g);
 }
+// 园亭：台基 + 四角柱 + 彩画枋 + 重檐攒尖（比 palace() 轻，小尺度不塞门窗格扇）
+// 御花园对亭/池亭与景山五亭共用；palace() 的 double 下檐固定 4.4 高，小亭子会头重脚轻
+function gardenPav(o){
+  const {w=12,d=12,bodyH=4.6,x=0,y=0,z=0,double=true,roofH=4.4,baseH=1.3,steps=true}=o;
+  const g=new THREE.Group(); g.position.set(x,y,z);
+  if(baseH>0){
+    const b=sh(new THREE.Mesh(hipFrustumGeo(w+4,d+4,w+1.6,d+1.6,baseH),matMarble));
+    b.position.y=0; g.add(b); edged(b);
+  }
+  const body=sh(new THREE.Mesh(hipFrustumGeo(w+.6,d+.6,w,d,bodyH),matWallBig));
+  body.position.y=baseH; g.add(body); edged(body);
+  const cols=[], hw=w/2-.6, hd=d/2-.6;
+  for(const [sx,sz] of [[-1,-1],[1,-1],[1,1],[-1,1]])
+    cols.push({w:.55,h:bodyH*.92,d:.55,x:sx*hw,y:baseH+bodyH*.46,z:sz*hd,m:matColumn});
+  mergedBoxes(g,cols);
+  mergedBoxes(g,[{w:w+.5,h:.5,d:d+.5,x:0,y:baseH+bodyH-.35,z:0,m:matCaihua}]);
+  let rt=baseH+bodyH;
+  if(double){
+    const fr=sh(new THREE.Mesh(hipFrustumGeo(w+5,d+5,w*.7,d*.7,3.4,1.7),
+      roofFit(matGold,texRoof,(w+5)/18,.9)));
+    fr.position.y=rt; g.add(fr); edged(fr); flattenTopUV(fr);
+    rt+=3.4;
+    box(g,w*.7,2,d*.7,0,rt+1,0,matWallBig);
+    rt+=2;
+  }
+  const rw=double?w*.7+5:w+5, rd=double?d*.7+5:d+5, rh=double?roofH*.85:roofH;
+  const r=sh(new THREE.Mesh(pyramidGeo(rw,rd,rh),matGold)); r.position.y=rt; g.add(r); edged(r);
+  const fin=new THREE.Mesh(new THREE.SphereGeometry(.75,12,10),matGoldDark);
+  fin.position.y=rt+rh+.9; g.add(fin);
+  if(steps&&baseH>0) stairs(g,3.4,baseH,-(d+4)/2);
+  city.add(g); return g;
+}
 // 金水桥（内金水河 214×22，河面 y=.3；五桥并排跨河，桥位与宽度单一数据源：
 // 建模、河面碰撞、第一人称桥面高度都读它，避免三处各写一套数字对不上）
 const JINSHUI=[[-48,5.5],[-26,6.5],[0,10],[26,6.5],[48,5.5]];
@@ -2047,36 +2079,7 @@ await stage('正在升起殿宇楼阁',43);
   gateHouse(Z1,16,4.8,2.4);
   gateHouse(356,15,4.6,2.4);
   /* —— 亭：台基 + 四角柱 + 重檐攒尖（比 palace() 轻，小尺度不塞门窗格扇） —— */
-  const gardenPav=(o)=>{
-    const {w=12,d=12,bodyH=4.6,x=0,y=0,z=0,double=true,roofH=4.4,baseH=1.3,steps=true}=o;
-    const g=new THREE.Group(); g.position.set(x,y,z);
-    if(baseH>0){
-      const b=sh(new THREE.Mesh(hipFrustumGeo(w+4,d+4,w+1.6,d+1.6,baseH),matMarble));
-      b.position.y=0; g.add(b); edged(b);
-    }
-    const body=sh(new THREE.Mesh(hipFrustumGeo(w+.6,d+.6,w,d,bodyH),matWallBig));
-    body.position.y=baseH; g.add(body); edged(body);
-    const cols=[], hw=w/2-.6, hd=d/2-.6;
-    for(const [sx,sz] of [[-1,-1],[1,-1],[1,1],[-1,1]])
-      cols.push({w:.55,h:bodyH*.92,d:.55,x:sx*hw,y:baseH+bodyH*.46,z:sz*hd,m:matColumn});
-    mergedBoxes(g,cols);
-    mergedBoxes(g,[{w:w+.5,h:.5,d:d+.5,x:0,y:baseH+bodyH-.35,z:0,m:matCaihua}]);
-    let rt=baseH+bodyH;
-    if(double){
-      const fr=sh(new THREE.Mesh(hipFrustumGeo(w+5,d+5,w*.7,d*.7,3.4,1.7),
-        roofFit(matGold,texRoof,(w+5)/18,.9)));
-      fr.position.y=rt; g.add(fr); edged(fr); flattenTopUV(fr);
-      rt+=3.4;
-      box(g,w*.7,2,d*.7,0,rt+1,0,matWallBig);
-      rt+=2;
-    }
-    const rw=double?w*.7+5:w+5, rd=double?d*.7+5:d+5, rh=double?roofH*.85:roofH;
-    const r=sh(new THREE.Mesh(pyramidGeo(rw,rd,rh),matGold)); r.position.y=rt; g.add(r); edged(r);
-    const fin=new THREE.Mesh(new THREE.SphereGeometry(.75,12,10),matGoldDark);
-    fin.position.y=rt+rh+.9; g.add(fin);
-    if(steps&&baseH>0) stairs(g,3.4,baseH,-(d+4)/2);
-    city.add(g); return g;
-  };
+  // 园亭统一用顶层 gardenPav()（景山五亭也用它，见上）
   gardenPav({x:38,z:396}); gardenPav({x:-38,z:396});            // 万春亭 / 千秋亭
   addCollider(38,396,8,8); addCollider(-38,396,8,8);
   /* —— 钦安殿（中轴，单层台基 + 汉白玉栏板；palace 的多层台基楼梯只到最下层，不用） —— */
@@ -2207,8 +2210,35 @@ city.add(gate({x:-376,z:-150,w:48,d:20,h:10,rot:Math.PI/2,towerH:5,doubleTower:t
   mk(annex.roofs,matGold,true);
   mk(annex.doors,matDoorStud,false);
 }
-const whd=palace({w:56,d:26,bodyH:9,tiers:1,roofH:6.5,x: 245,z:-235,dougong:true,shan:true}); whd.userData={poiName:'文华殿',world:'gugong'}; city.add(whd); compound( 245,-235,56,26);
-const wyd=palace({w:56,d:26,bodyH:9,tiers:1,roofH:6.5,x:-245,z:-235,dougong:true,shan:true}); wyd.userData={poiName:'武英殿',world:'gugong'}; city.add(wyd); compound(-245,-235,56,26);
+// —— 文华殿 / 武英殿（外朝东路/西路）：与六宫同一套合院语言——合院加深、后殿（文渊阁/敬思殿位）+ 南墙宫门
+{
+  const annex={bases:[],bodies:[],roofs:[],doors:[]};
+  const T=(x,y,z)=>new THREE.Matrix4().makeTranslation(x,y,z);
+  const rearRoof=hipRoofGeo(30,19,4.2,.58), gateRoof=hipRoofGeo(14,8,2.6,.58);
+  for(const s of [1,-1]){
+    const cx=s*245, sz=-235, D=60;
+    const h=palace({w:56,d:26,bodyH:9,tiers:1,roofH:6.5,x:cx,z:sz-8,dougong:true,shan:true});
+    h.userData={poiName:s>0?'文华殿':'武英殿',world:'gugong'}; city.add(h);
+    compound(cx, sz, 56, 26, {D,noGate:true});
+    const rz=sz+22;                                     // 后殿（24×13）
+    annex.bases.push({geo:boxGeo(28,1.2,17), m:T(cx,.6,rz)});
+    annex.bodies.push({geo:boxGeo(24,5.2,13), m:T(cx,3.8,rz)});
+    annex.roofs.push({geo:rearRoof, m:T(cx,6.4,rz)});
+    annex.doors.push({geo:boxGeo(5.6,2.8,.3), m:T(cx,2.6,rz-6.65)});
+    const gz=sz-D/2;                                    // 宫门
+    annex.bodies.push({geo:boxGeo(10,4,5), m:T(cx,2,gz)});
+    annex.roofs.push({geo:gateRoof, m:T(cx,4.05,gz)});
+    annex.doors.push({geo:boxGeo(3.6,3,.3), m:T(cx,1.5,gz-2.55)});
+    addCollider(cx, rz, 14, 8);
+    addCollider(cx-3.2, gz, 1.6, 2.5); addCollider(cx+3.2, gz, 1.6, 2.5);
+  }
+  const mk=(items,mat,cast)=>{ const m=new THREE.Mesh(mergeGeo(items),mat);
+    m.castShadow=cast; m.receiveShadow=true; city.add(m); };
+  mk(annex.bases,matMarble,false);
+  mk(annex.bodies,matWall,true);
+  mk(annex.roofs,matGold,true);
+  mk(annex.doors,matDoorStud,false);
+}
 // —— 树木（御花园松柏沿园墙与殿亭之间；庭院阔叶）
 {
   // 园内树位逐点给定：避开钦安殿台基（x±16/z380..404）、万春亭/千秋亭（x±26..42/z388..404）、
@@ -2389,14 +2419,15 @@ huabiao(-58,0,-552); huabiao(58,0,-552);
     }
     cn.count=ti; sh(cn); hill.add(cn);
   }
-  const pav=(w,d,bh,rh,x,z)=>{ const y=surfY(x,z)-.6;
-    return palace({w,d,bodyH:bh,tiers:0,pyr:true,roofH:rh,x,y,z,collide:false}); };
-  // 五亭各自压在一座峰顶上（x 与 HILL 的五座中心对齐），不再是一排站在同一道脊上
-  hill.add(pav(16,16,6,8,0,0));       // 万春亭（中峰）
-  hill.add(pav(11,11,5,6,-34,0));     // 周赏亭
-  hill.add(pav(11,11,5,6,34,0));      // 辑芳亭
-  hill.add(pav(10,10,4,5,-68,0));     // 观妙亭
-  hill.add(pav(10,10,4,5,68,0));      // 富览亭
+  // 五亭改重檐攒尖：实景万春亭为三重檐、四亭重檐，原来五座都是单檐金字塔。
+  // gardenPav 的下檐 3.4 高、上层 2 高，比 palace() 的 4.4/4.5 更适合小亭子。
+  const pav=(w,d,bh,rh,x,z)=>{ const y=surfY(x,z)-.6;   // x/z 是山体局部坐标，hill 在 z=660
+    return gardenPav({w,d,bodyH:bh,double:true,roofH:rh,baseH:1.1,x,y,z:660+z,steps:false}); };
+  pav(16,16,5.2,5.2,0,0);      // 万春亭（中峰）
+  pav(11,11,4.4,4.2,-34,0);    // 周赏亭
+  pav(11,11,4.4,4.2,34,0);     // 辑芳亭
+  pav(10,10,4,4,-68,0);        // 观妙亭
+  pav(10,10,4,4,68,0);         // 富览亭
   hill.userData={poiName:'景山万春亭',world:'gugong'};
   city.add(hill);
 }
@@ -2873,6 +2904,8 @@ function* gwBuildGen(){
         ms.push({w:.5,h:.9,d:.9,x,y:wH+.45,z:-40,m:matGWMerlon}); }
       mergedBoxes(g,ms);
     }
+    // 瓮城院内铺装：灰砖地坪（原来院里直接露地形，和城台不是一套材质）
+    box(g,38,.7,24, 0,.35,-27, matGWLong,false);
     g.userData={poiName:'关城',world:'wall'};
     // 碰撞（随朝向旋转的 AABB 近似）：主城台 + 瓮城两侧墙 + front 墙两段，门洞留空
     const yc=Math.abs(Math.cos(yaw)), ys=Math.abs(Math.sin(yaw));
@@ -3141,11 +3174,11 @@ const POIS_G=[
   desc:'台基南沿陈设一组：三足双耳鎏金香炉、昂首铜龟与铜鹤（大典焚香之用）、防火鎏金铜缸。日晷居东南、嘉量居西南，皆为国之量器。'},
  {name:'东六宫院落',en:'EASTERN PALACES',year:'明永乐 · 内廷东六宫',pos:[210,16,190],view:{p:[160,20,108],t:[214,9,178]},
   desc:'嫔妃居所，一宫一院、围合而居。朱红院墙、宫门石阶，院内前后两进正殿（后殿体量略小）。与西六宫对称分布于后三宫两翼，合称"东西六宫"。'},
- {name:'文华殿',en:'HALL OF LITERARY GLORY',year:'明永乐 · 外朝东路',pos:[245,14,-235],view:{p:[208,14,-208],t:[245,10,-235]},
+ {name:'文华殿',en:'HALL OF LITERARY GLORY',year:'明永乐 · 外朝东路',pos:[245,24,-235],view:{p:[150,45,-320],t:[245,10,-235]},
   desc:'外朝东路殿宇，明代多作太子讲学/经筵之所，清代经筵讲学之所（太子居所屡有变动，非固定东宫）。北侧文渊阁为皇家藏书楼，清代《四库全书》曾藏于此。'},
- {name:'武英殿',en:'HALL OF MARTIAL VALOR',year:'明永乐 · 外朝西路',pos:[-245,14,-235],view:{p:[-208,14,-208],t:[-245,10,-235]},
+ {name:'武英殿',en:'HALL OF MARTIAL VALOR',year:'明永乐 · 外朝西路',pos:[-245,24,-235],view:{p:[-150,45,-320],t:[-245,10,-235]},
   desc:'外朝西路殿宇，明代曾为皇帝便殿/斋居之所，清代改为修书处刊刻"殿版"。据载1644年李自成曾在此举行即位仪式。'},
- {name:'景山万春亭',en:'WANCHUN PAVILION',year:'清乾隆十五年 · 1750',pos:[0,58,660],view:{p:[0,64,712],t:[0,26,430]},
+ {name:'景山万春亭',en:'WANCHUN PAVILION',year:'清乾隆十五年 · 1750',pos:[0,66,660],view:{p:[0,80,736],t:[0,22,420]},
   desc:'景山之巅，北京中轴线制高点。登亭南望，紫禁城金顶琉璃一览无余——此刻脚下，正是你眼前的整座数字孪生城。'},
 ];
 // 长城 POI：全部长在 GW 数据（关城/敌楼/烽火台坐标）上，GW 砌造完成后由 afterGWBuilt() 填入
