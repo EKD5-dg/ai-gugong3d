@@ -1253,8 +1253,23 @@ const blobTex=(()=>{const c=document.createElement('canvas');c.width=c.height=12
   const g=c.getContext('2d');const gr=g.createRadialGradient(64,64,6,64,64,64);
   gr.addColorStop(0,'rgba(0,0,0,.5)');gr.addColorStop(1,'rgba(0,0,0,0)');g.fillStyle=gr;g.fillRect(0,0,128,128);
   return new THREE.CanvasTexture(c);})();
+// 歇山山花：正脊两端的三角梅花板 + 搏风板（单檐/重檐上层共用）
+function shanHua(g,rw,rd,rt,roofH){
+  const gw2=rd*.3, gh=roofH*.5;
+  const shp=new THREE.Shape(); shp.moveTo(-gw2,0); shp.lineTo(gw2,0); shp.lineTo(0,gh); shp.closePath();
+  for(const sgn of [1,-1]){
+    const gm=new THREE.Mesh(new THREE.ShapeGeometry(shp),matCaihua);
+    gm.rotation.y=sgn*Math.PI/2;
+    gm.position.set(sgn*rw*.3, rt+roofH*.42, 0);
+    g.add(gm);
+    box(g,.22,gh*1.35,gw2*2.3, sgn*rw*.3, rt+roofH*.42+gh*.5, 0, matGoldDark,false);  // 搏风板
+  }
+}
 function palace(o){
   const {w,d,bodyH=10,tiers=1,double=false,pyr=false,roofH=8,x=0,y=0,z=0}=o;
+  // 重檐上层尺寸：默认沿用大殿的"面阔收 20、进深收 20"，但门楼/方亭进深本来就小，
+  // 按默认会把上层压成一条窄板，故允许 upW/upD 直接给尺寸（上层屋面也从它推）
+  const upW=o.upW??Math.max(w-20,5), upD=o.upD??Math.max(d-20,5), upBodyH=o.upBodyH??4.5;
   const g=new THREE.Group(); g.position.set(x,y,z);
   g.rotation.y=(Math.sin(x*.7+z*1.3)*.5)*.006;              // 沉降歪闪：±0.17°
   g.position.y-=Math.abs(Math.sin(x*1.1+z*.7))*.06;         // 基础沉降
@@ -1306,13 +1321,13 @@ function palace(o){
   eaveDecor(g,w,d,topY+bodyH-1.3,o.dougong);
   let rt=topY+bodyH;
   if(double){
-    const fr=sh(new THREE.Mesh(hipFrustumGeo(w+6,d+6,Math.max(w-18,6),Math.max(d-18,6),4.4,1.7),
+    const fr=sh(new THREE.Mesh(hipFrustumGeo(w+6,d+6,upW+2,upD+2,4.4,1.7),
       roofFit(rm, rm===matGoldG?texRoofG:texRoof, (w+6)/18, .9)));
     fr.position.y=rt; g.add(fr); flattenTopUV(fr);
     eaveCorners(g,w+6,d+6,rt+.2);
     rt+=4.4;
-    box(g,Math.max(w-20,5),4.5,Math.max(d-20,5), 0,rt+2.27,0, bm);
-    rt+=4.5;
+    box(g,upW,upBodyH,upD, 0,rt+upBodyH/2,0, bm);
+    rt+=upBodyH;
   }
   if(pyr){
     const rw2=w+(o.double?0:8), rd2=d+(o.double?0:8);
@@ -1320,10 +1335,10 @@ function palace(o){
     p.position.y=rt; g.add(p); edged(p);
     hipRidges(g,rw2,rd2,roofH,0,rt);
     eaveCorners(g,rw2,rd2,rt+.2);
-    const fin=new THREE.Mesh(new THREE.SphereGeometry(1.7,16,12),matGoldDark);
+    const fin=new THREE.Mesh(new THREE.SphereGeometry(o.finR??1.7,16,12),matGoldDark);   // 小宝顶：亭子按面阔收小，否则一颗金球压过屋顶
     fin.position.y=rt+roofH+1.2; g.add(fin);
   }else{
-    const rw=w+(double?-12:8), rd=d+(double?-12:8);
+    const rw=double?upW+8:w+8, rd=double?upD+8:d+8;   // 重檐上层屋面随上层殿身走（大殿与原 -12 规则等值）
     const r=sh(new THREE.Mesh(hipRoofGeo(rw,rd,roofH,.55),rm));
     r.position.y=rt; g.add(r); edged(r);
     hipRidges(g,rw,rd,roofH,.55,rt);
@@ -1358,17 +1373,7 @@ function palace(o){
       }
       wad.count=wi; g.add(wad);
     }
-    if(o.shan){   // 歇山山花：正脊两端三角梅花板（保和殿/文华/武英）
-      const gw2=rd*.3, gh=roofH*.5;
-      const shp=new THREE.Shape(); shp.moveTo(-gw2,0); shp.lineTo(gw2,0); shp.lineTo(0,gh); shp.closePath();
-      for(const sgn of [1,-1]){
-        const gm=new THREE.Mesh(new THREE.ShapeGeometry(shp),matCaihua);
-        gm.rotation.y=sgn*Math.PI/2;
-        gm.position.set(sgn*rw*.3, rt+roofH*.42, 0);
-        g.add(gm);
-        box(g,.22,gh*1.35,gw2*2.3, sgn*rw*.3, rt+roofH*.42+gh*.5, 0, matGoldDark,false);  // 搏风板
-      }
-    }
+    if(o.shan) shanHua(g,rw,rd,rt,roofH);   // 歇山山花（重檐时贴在上层屋面）
   }
   // 殿身碰撞：按殿身外轮廓注册；组内局部坐标的殿宇（城楼/山亭）传 collide:false 关闭
   if(o.collide!==false&&w>=10&&d>=10) addCollider(x,z,w/2+1.2,d/2+1.2);
@@ -1433,12 +1438,22 @@ function gate(o){
     {w:.8,h:.5,d:d+1, x: (w/2+.1),y:h+.2, z:0,         m:matMarble},
   ]);
   const zb=d/2+.9;                                              // 城台底边半深（hipFrustum 下宽上窄，收分 0.9）
+  // 城台顶女墙：原来顶面是一整块光板，门楼像孤岛；一圈矮墙把城台轮廓压出来
+  mergedBoxes(g,[
+    {w:w-1.4,h:.85,d:.5, x:0,          y:h+.45, z:-(d/2-.9), m:matWallBig},
+    {w:w-1.4,h:.85,d:.5, x:0,          y:h+.45, z: (d/2-.9), m:matWallBig},
+    {w:.5,h:.85,d:d-1.4, x:-(w/2-.9),  y:h+.45, z:0,         m:matWallBig},
+    {w:.5,h:.85,d:d-1.4, x: (w/2-.9),  y:h+.45, z:0,         m:matWallBig},
+  ]);
   [1,-1].forEach(s=>{
     archGate(g,0,     h*.62,h*.80, zb,.9,h,s);                  // 中券（御路）
     archGate(g, w*.30,h*.42,h*.56, zb,.9,h,s);                  // 两侧券洞
     archGate(g,-w*.30,h*.42,h*.56, zb,.9,h,s);
   });
-  const t=palace({w:w*.62,d:d*.85,bodyH:h*.58,tiers:0,roofH:towerH,bm,collide:false});  // 城楼已被城台碰撞覆盖
+  const tw=w*.62, td=d*.85;
+  const t=palace({w:tw,d:td,bodyH:h*.58,tiers:0,roofH:towerH,
+    double:!!o.doubleTower, shan:!!o.shan, dougong:!!o.dougong,
+    upW:tw*.84, upD:td*.72, upBodyH:3.6, bm, collide:false});  // 城楼已被城台碰撞覆盖
   t.position.y=h; g.add(t);
   return g;
 }
@@ -1458,21 +1473,55 @@ function wall(x1,z1,x2,z2,h=8){
   else{ const len=Math.abs(x2-x1); addCollider((x1+x2)/2,z1,len/2,2.4); }
   city.add(g); return g;
 }
-// 角楼
+// 角楼：十字抱厦三重檐。原实现是三层方盒子逐层收小，读起来是"小塔"；
+// 实景角楼的名气来自十字平面——四面抱厦各出一座小歇山，与两层大檐叠成七十二脊。
 function cornerTower(x,z){
   const g=new THREE.Group(); g.position.set(x,0,z);
   const b1=sh(new THREE.Mesh(hipFrustumGeo(13.6,13.6,12.4,12.4,4),matWallBig)); b1.position.y=0; g.add(b1); edged(b1);
   const b2=sh(new THREE.Mesh(hipFrustumGeo(9,9,8,8,5),matWall)); b2.position.y=4; g.add(b2); edged(b2);
-  const f1=new THREE.Mesh(hipFrustumGeo(13,13,8,8,3),roofFit(matGold,texRoof,13/18,.6));
-  f1.position.y=9; g.add(f1); edged(f1); flattenTopUV(f1);
-  box(g,5.6,4,5.6, 0,12.5,0, matWall);
-  const f2=new THREE.Mesh(hipRoofGeo(10,10,3.4,.5),matGold); f2.position.y=14.5; g.add(f2); edged(f2);
-  box(g,4,3,4, 0,17.9,0, matWall);
-  const f3=new THREE.Mesh(pyramidGeo(7.2,7.2,4.6),matGold); f3.position.y=19.4; g.add(f3); edged(f3);
-  const fin=new THREE.Mesh(new THREE.SphereGeometry(1.1,12,10),matGoldDark); fin.position.y=24.6; g.add(fin);
+  // 十字平面：中心方身 + 四面抱厦（抱厦只出红色墙身，檐口交给上面的十字大檐；
+  // 早先给每座抱厦单独加小屋顶，四个金顶挤在一起读成"一把伞"，反而看不出十字）
+  const body=sh(new THREE.Mesh(hipFrustumGeo(10,10,9.2,9.2,4.4),matWallBig)); body.position.y=9; g.add(body); edged(body);
+  for(const [dx,dz,rot] of [[1,0,0],[-1,0,0],[0,1,Math.PI/2],[0,-1,Math.PI/2]]){
+    const wg=new THREE.Group(); wg.position.set(dx*6.0,9,dz*6.0); wg.rotation.y=rot;
+    const bd=sh(new THREE.Mesh(hipFrustumGeo(7.6,5.8,6.6,4.8,3.6),matWall));
+    bd.position.y=1.8; wg.add(bd); edged(bd);
+    g.add(wg);
+  }
+  // 下层十字大檐：两向庑殿交叉（b 抬高 0.12 让交叉处只有一条脊线，不出现共面闪纹）
+  // 19×13 而不是 20×11.5：短边要盖住殿身并留出檐口（原来短边几乎与方身齐平，远看是一把伞而不是屋顶）
+  const r1a=sh(new THREE.Mesh(hipRoofGeo(19,13,3.4,.44),matGold)); r1a.position.y=13.4; g.add(r1a); edged(r1a);
+  hipRidges(g,19,13,3.4,.44,13.4);
+  const r1b=sh(new THREE.Mesh(hipRoofGeo(13,19,3.4,.44),matGold)); r1b.position.y=13.52; g.add(r1b); edged(r1b);
+  hipRidges(g,13,19,3.4,.44,13.52);
+  // 上层：方身穿过十字脊，再叠一层小十字檐 + 宝顶
+  const b3=sh(new THREE.Mesh(hipFrustumGeo(7.8,7.8,7,7,3.2),matWall)); b3.position.y=16.4; g.add(b3); edged(b3);
+  const r2a=sh(new THREE.Mesh(hipRoofGeo(13.5,10.5,2.6,.44),matGold)); r2a.position.y=19.6; g.add(r2a); edged(r2a);
+  hipRidges(g,13.5,10.5,2.6,.44,19.6);
+  const r2b=sh(new THREE.Mesh(hipRoofGeo(10.5,13.5,2.6,.44),matGold)); r2b.position.y=19.72; g.add(r2b); edged(r2b);
+  hipRidges(g,10.5,13.5,2.6,.44,19.72);
+  // 第三重：极小的一方身 + 十字檐，把"三重檐"补齐（前两重已到 22.2，宝顶不能凭空坐在脊上）
+  const b4=sh(new THREE.Mesh(hipFrustumGeo(4.8,4.8,4.4,4.4,1.8),matWall)); b4.position.y=21.9; g.add(b4); edged(b4);
+  const r3a=sh(new THREE.Mesh(hipRoofGeo(7.4,6,1.5,.44),matGold)); r3a.position.y=23.7; g.add(r3a); edged(r3a);
+  hipRidges(g,7.4,6,1.5,.44,23.7);
+  const r3b=sh(new THREE.Mesh(hipRoofGeo(6,7.4,1.5,.44),matGold)); r3b.position.y=23.8; g.add(r3b); edged(r3b);
+  hipRidges(g,6,7.4,1.5,.44,23.8);
+  const fin=new THREE.Mesh(new THREE.SphereGeometry(.62,12,10),matGoldDark); fin.position.y=25.7; g.add(fin);
   g.userData={poiName:'角楼',world:'gugong'};   // 点击角楼本体打开"角楼"卡片（按名查 POIS，不写死下标）
   addCollider(x,z,7,7);
   city.add(g); return g;
+}
+// 雁翅楼廊庑：雁翅城台上的一条长廊（正身 + 彩画斗拱 + 顺脊长瓦顶），补上五凤楼的两翼
+function wingCorridor(parent,x,z,len,y){
+  const g=new THREE.Group(); g.position.set(x,y,z);
+  const bw=9.4;
+  const body=sh(new THREE.Mesh(hipFrustumGeo(bw+.4,len+.4,bw,len,3.8),matWallBig));
+  body.position.y=1.9; g.add(body); edged(body);
+  eaveDecor(g,bw,len,2.5,true);
+  const r=sh(new THREE.Mesh(hipRoofGeo(len+5,bw+7,3.1,.62),matGold));
+  r.rotation.y=Math.PI/2; r.position.y=3.8; g.add(r); edged(r);
+  eaveCorners(g,bw+7,len+5,4.0);
+  parent.add(g);
 }
 // 金水桥（内金水河 214×22，河面 y=.3；五桥并排跨河，桥位与宽度单一数据源：
 // 建模、河面碰撞、第一人称桥面高度都读它，避免三处各写一套数字对不上）
@@ -1649,9 +1698,11 @@ function buildTreeVariant(kind){
   return {canopy:mergeGeo(items),trunk};
 }
 // 院墙（宫各成院，月门拱圈；四面院墙均注册碰撞；五面墙同材质合并为 1 个 Mesh）
-function compound(x,z,w,d){
+// opt.D：合院进深（六宫加深到能放前殿+后殿）；opt.noGate：不用月门（改由宫门占据南墙缺口）
+function compound(x,z,w,d,opt){
+  opt=opt||{};
   const g=new THREE.Group(); g.position.set(x,0,z);
-  const W=w+20, D=d+18, h=2.4, t=1, bm=redWallMat(3,1.2);
+  const W=w+20, D=opt.D||d+18, h=2.4, t=1, bm=redWallMat(3,1.2);
   const seg=(W-6)/2;
   mergedBoxes(g,[
     {w:W,  h:h,d:t, x:0,          y:h/2, z: D/2, m:bm},
@@ -1660,10 +1711,12 @@ function compound(x,z,w,d){
     {w:seg,h:h,d:t, x:-(3+seg/2), y:h/2, z:-D/2, m:bm},
     {w:seg,h:h,d:t, x: (3+seg/2), y:h/2, z:-D/2, m:bm},
   ]);
-  const arch=new THREE.Mesh(new THREE.TorusGeometry(2.6,.34,8,22,Math.PI),matMarble);
-  arch.position.set(0,1.35,-D/2); g.add(arch);
-  box(g,.72,1.4,t, -2.6,.7,-D/2, matMarble,false);   // 月门框墩：拱脚落在地面（原拱圈两端悬空约1.2m）
-  box(g,.72,1.4,t,  2.6,.7,-D/2, matMarble,false);
+  if(!opt.noGate){
+    const arch=new THREE.Mesh(new THREE.TorusGeometry(2.6,.34,8,22,Math.PI),matMarble);
+    arch.position.set(0,1.35,-D/2); g.add(arch);
+    box(g,.72,1.4,t, -2.6,.7,-D/2, matMarble,false);   // 月门框墩：拱脚落在地面（原拱圈两端悬空约1.2m）
+    box(g,.72,1.4,t,  2.6,.7,-D/2, matMarble,false);
+  }
   city.add(g);
   addCollider(x-(3+seg/2), z-D/2, seg/2+.5, .9);   // 南墙两段，月门留真实缺口
   addCollider(x+(3+seg/2), z-D/2, seg/2+.5, .9);
@@ -1835,9 +1888,21 @@ await stage('正在升起殿宇楼阁',43);
     archGate(g,-30,  7.6, 9.2, 22.5,.75,16,s);
     archGate(g, 30,  7.6, 9.2, 22.5,.75,16,s);
   });
-  const t=palace({w:62,d:20,bodyH:8,tiers:0,roofH:8.5,bm:matWallBig,dougong:true,collide:false}); t.position.y=16; g.add(t);
-  const p1=palace({w:18,d:13,bodyH:6,tiers:0,roofH:5,collide:false}); p1.position.set(-74,14,-88); g.add(p1);
-  const p2=palace({w:18,d:13,bodyH:6,tiers:0,roofH:5,collide:false}); p2.position.set( 74,14,-88); g.add(p2);
+  // 五凤楼：主楼重檐 + 两翼雁翅楼顶上补廊庑 + 翼端方亭重檐攒尖（原来两翼是两块光秃的红台）
+  wingCorridor(g,-74,-53,62,12); wingCorridor(g,74,-53,62,12);
+  // 正楼加宽到 84（原 62 只占 123 宽城台的一半，顶面空成一个大平台），进深随城台收
+  const t=palace({w:84,d:22,bodyH:9.5,tiers:0,double:true,upW:60.5,upD:14.6,upBodyH:4.2,
+    roofH:9,bm:matWallBig,dougong:true,collide:false}); t.position.y=16; g.add(t);
+  const wingPav=(sx)=>{ const p=palace({w:15,d:11,bodyH:5.5,tiers:0,double:true,pyr:true,
+    upW:10.8,upD:7.9,upBodyH:2.8,roofH:5,finR:.8,dougong:true,collide:false});
+    p.position.set(sx,14,-88); g.add(p); };
+  wingPav(-74); wingPav(74);
+  mergedBoxes(g,[
+    {w:118,h:.95,d:.55, x:0,y:16.5,z:-20.1, m:matWallBig},
+    {w:118,h:.95,d:.55, x:0,y:16.5,z: 20.1, m:matWallBig},
+    {w:.55,h:.95,d:40.5, x:-59.2,y:16.5,z:0, m:matWallBig},
+    {w:.55,h:.95,d:40.5, x: 59.2,y:16.5,z:0, m:matWallBig},
+  ]);
   g.userData.poiName='午门'; g.userData.world='gugong'; city.add(g);
 }
 // —— 金水桥 ×5
@@ -1847,7 +1912,7 @@ await stage('正在升起殿宇楼阁',43);
   g.userData.poiName='内金水桥'; g.userData.world='gugong'; city.add(g);
 }
 // —— 太和门
-{ const g=gate({x:0,z:-300,w:64,d:22,h:12,towerH:6,dougong:false}); g.userData.poiName='太和门'; g.userData.world='gugong'; city.add(g); }
+{ const g=gate({x:0,z:-300,w:64,d:22,h:12,towerH:6,doubleTower:true,shan:true,dougong:true}); g.userData.poiName='太和门'; g.userData.world='gugong'; city.add(g); }
 // —— 三大殿（三层共享台基 + 望柱栏板）
 {
   const t=new THREE.Group(); t.position.set(0,0,-45);
@@ -1896,7 +1961,7 @@ await stage('正在升起殿宇楼阁',43);
 }
 // —— 乾清门 + 内墙
 {
-  const g=gate({x:0,z:100,w:56,d:18,h:10,towerH:5.5}); g.userData.poiName='乾清门'; g.userData.world='gugong'; city.add(g);
+  const g=gate({x:0,z:100,w:56,d:18,h:10,towerH:5.5,shan:true,dougong:true}); g.userData.poiName='乾清门'; g.userData.world='gugong'; city.add(g);
   bronzeVat(-40,0,113); bronzeVat(40,0,113);
   wall(-110,100,-28.5,100,7); wall(28.5,100,110,100,7);   // 端点搭接乾清门城台底边（±28.9）
 }
@@ -1915,10 +1980,186 @@ await stage('正在升起殿宇楼阁',43);
   const jt=palace({w:24,d:24,bodyH:8,tiers:0,pyr:true,roofH:10,y:6,z:215,dougong:true,bm:matWallWarm,rm:matGoldAmber}); jt.userData.poiName='交泰殿'; jt.userData.world='gugong'; city.add(jt);
   const kn=palace({w:42,d:22,bodyH:9,tiers:0,roofH:8,y:6,z:265,dougong:true,bm:matWallWarm,rm:matGoldAmber}); kn.userData.poiName='坤宁宫'; kn.userData.world='gugong'; city.add(kn);
 }
-// —— 御花园·钦安殿
-{ const g=palace({w:22,d:16,bodyH:7,tiers:1,pyr:true,roofH:6,z:392,dougong:true}); g.userData.poiName='御花园 · 钦安殿'; g.userData.world='gugong'; city.add(g); }
+// —— 御花园（园墙 / 坤宁门·顺贞门·天一门 / 钦安殿 / 万春亭·千秋亭 / 堆秀山·御景亭 / 延晖阁 / 浮碧亭·澄瑞亭 / 绛雪轩·养性斋）
+// 原来只有一座钦安殿 + 一片锥形树，POI 看过去是"空广场"。按实景补成一进完整的园子：
+// 中轴钦安殿、东西对亭、东北堆秀山、西北延晖阁、东西水池亭，四周围红墙、南北各一门。
+{
+  const G=66, Z0=322, Z1=462, cz=(Z0+Z1)/2;
+  /* —— 地面：细石子甬路（比朝区青砖更浅更碎，一眼区分园子） —— */
+  const texGarden=canvasTex(256,256,(g,w,h)=>{
+    g.fillStyle='#b8b1a0'; g.fillRect(0,0,w,h);
+    for(let i=0;i<2400;i++){
+      const x=Math.random()*w,y=Math.random()*h,r=.5+Math.random()*1.5,v=Math.random();
+      g.fillStyle=v<.5?'rgba(148,140,124,.5)':(v<.82?'rgba(198,190,174,.6)':'rgba(118,110,98,.35)');
+      g.beginPath(); g.arc(x,y,r,0,7); g.fill();
+    }
+    g.strokeStyle='rgba(122,114,102,.16)';
+    for(let i=1;i<8;i++){ const p=i*w/8;
+      g.beginPath(); g.moveTo(p,0); g.lineTo(p,h); g.stroke();
+      g.beginPath(); g.moveTo(0,p); g.lineTo(w,p); g.stroke(); }
+  },1.4);
+  const gFloorMat=std({map:rep(texGarden,20,21),roughness:.98});
+  gFloorMat.userData.tint=.94; PLAZA_MATS.push(gFloorMat);   // 跟广场分区一起分档着色（否则夜景下园子是一片亮白）
+  const floor=new THREE.Mesh(new THREE.PlaneGeometry(G*2,Z1-Z0),gFloorMat);
+  floor.rotation.x=-Math.PI/2; floor.position.set(0,.30,cz); city.add(floor);   // 广场分区面在 .22，园子铺装必须压在它上面
+  const mkPath=(w,d,x,z)=>{
+    const m=matWith('gpath'+w+'x'+d,()=>{
+      const mm=std({map:rep(texPave,Math.max(1,Math.round(w/4.8)),Math.max(1,Math.round(d/4.8))),roughness:.95});
+      mm.userData.tint=1.1; PLAZA_MATS.push(mm); return mm;
+    });
+    const p=new THREE.Mesh(new THREE.PlaneGeometry(w,d),m);
+    p.rotation.x=-Math.PI/2; p.position.set(x,.34,z); city.add(p);
+  };
+  mkPath(9,Z1-Z0-4,0,cz);        // 中轴甬路
+  mkPath(G*2-10,7,0,392);        // 东西横路
+  /* —— 园墙 + 深色压顶 —— */
+  const bmG=redWallMat(10,1.6), WH=3.3;
+  const gw=new THREE.Group(); city.add(gw);
+  const segs=[
+    {w:G-9,h:WH,d:.9, x:-(G+9)/2,y:WH/2,z:Z0},
+    {w:G-9,h:WH,d:.9, x: (G+9)/2,y:WH/2,z:Z0},
+    {w:G-8,h:WH,d:.9, x:-(G+8)/2,y:WH/2,z:Z1},
+    {w:G-8,h:WH,d:.9, x: (G+8)/2,y:WH/2,z:Z1},
+    {w:.9,h:WH,d:Z1-Z0, x:-G,y:WH/2,z:cz},
+    {w:.9,h:WH,d:Z1-Z0, x: G,y:WH/2,z:cz},
+  ];
+  mergedBoxes(gw,segs.map(s=>({...s,m:bmG})));
+  mergedBoxes(gw,segs.map(s=>({w:s.w+(s.w>s.d?.6:0),h:.34,d:s.d+(s.d>=s.w?.6:0),
+    x:s.x,y:WH+.17,z:s.z,m:matGoldDark})));
+  addCollider(-(G+9)/2,Z0,(G-9)/2,.7); addCollider((G+9)/2,Z0,(G-9)/2,.7);
+  addCollider(-(G+8)/2,Z1,(G-8)/2,.7); addCollider((G+8)/2,Z1,(G-8)/2,.7);
+  addCollider(-G,cz,.7,(Z1-Z0)/2); addCollider(G,cz,.7,(Z1-Z0)/2);
+  /* —— 三座门：坤宁门（南）/ 顺贞门（北）/ 天一门（钦安殿前） —— */
+  const gateHouse=(z,ww,hh,rh)=>{
+    const gg=new THREE.Group(); gg.position.set(0,0,z);
+    const pw=(ww-6.4)/2;
+    mergedBoxes(gg,[
+      {w:pw,h:hh,d:4.6,x:-(3.2+pw/2),y:hh/2,z:0,m:matWallBig},
+      {w:pw,h:hh,d:4.6,x: (3.2+pw/2),y:hh/2,z:0,m:matWallBig},
+      {w:ww,h:1.9,d:4.6,x:0,y:hh-.95,z:0,m:matWallBig},
+    ]);
+    box(gg,6.2,hh-1.3,.4,0,(hh-1.3)/2,0,matDoor,false);
+    const r=sh(new THREE.Mesh(hipRoofGeo(ww+4,7.6,rh*1.28,.58),matGold));
+    r.position.y=hh+.15; gg.add(r); edged(r);
+    city.add(gg);
+  };
+  gateHouse(Z0,18,5.2,2.6);
+  gateHouse(Z1,16,4.8,2.4);
+  gateHouse(356,15,4.6,2.4);
+  /* —— 亭：台基 + 四角柱 + 重檐攒尖（比 palace() 轻，小尺度不塞门窗格扇） —— */
+  const gardenPav=(o)=>{
+    const {w=12,d=12,bodyH=4.6,x=0,y=0,z=0,double=true,roofH=4.4,baseH=1.3,steps=true}=o;
+    const g=new THREE.Group(); g.position.set(x,y,z);
+    if(baseH>0){
+      const b=sh(new THREE.Mesh(hipFrustumGeo(w+4,d+4,w+1.6,d+1.6,baseH),matMarble));
+      b.position.y=0; g.add(b); edged(b);
+    }
+    const body=sh(new THREE.Mesh(hipFrustumGeo(w+.6,d+.6,w,d,bodyH),matWallBig));
+    body.position.y=baseH; g.add(body); edged(body);
+    const cols=[], hw=w/2-.6, hd=d/2-.6;
+    for(const [sx,sz] of [[-1,-1],[1,-1],[1,1],[-1,1]])
+      cols.push({w:.55,h:bodyH*.92,d:.55,x:sx*hw,y:baseH+bodyH*.46,z:sz*hd,m:matColumn});
+    mergedBoxes(g,cols);
+    mergedBoxes(g,[{w:w+.5,h:.5,d:d+.5,x:0,y:baseH+bodyH-.35,z:0,m:matCaihua}]);
+    let rt=baseH+bodyH;
+    if(double){
+      const fr=sh(new THREE.Mesh(hipFrustumGeo(w+5,d+5,w*.7,d*.7,3.4,1.7),
+        roofFit(matGold,texRoof,(w+5)/18,.9)));
+      fr.position.y=rt; g.add(fr); edged(fr); flattenTopUV(fr);
+      rt+=3.4;
+      box(g,w*.7,2,d*.7,0,rt+1,0,matWallBig);
+      rt+=2;
+    }
+    const rw=double?w*.7+5:w+5, rd=double?d*.7+5:d+5, rh=double?roofH*.85:roofH;
+    const r=sh(new THREE.Mesh(pyramidGeo(rw,rd,rh),matGold)); r.position.y=rt; g.add(r); edged(r);
+    const fin=new THREE.Mesh(new THREE.SphereGeometry(.75,12,10),matGoldDark);
+    fin.position.y=rt+rh+.9; g.add(fin);
+    if(steps&&baseH>0) stairs(g,3.4,baseH,-(d+4)/2);
+    city.add(g); return g;
+  };
+  gardenPav({x:38,z:396}); gardenPav({x:-38,z:396});            // 万春亭 / 千秋亭
+  addCollider(38,396,8,8); addCollider(-38,396,8,8);
+  /* —— 钦安殿（中轴，单层台基 + 汉白玉栏板；palace 的多层台基楼梯只到最下层，不用） —— */
+  const qad=palace({w:24,d:16,bodyH:8,tiers:1,pyr:true,roofH:6.5,z:392,dougong:true});
+  qad.userData.poiName='御花园 · 钦安殿'; qad.userData.world='gugong'; city.add(qad);
+  balustrade(qad,29,21,3);
+  /* —— 堆秀山 + 御景亭（东北） —— */
+  {
+    const hg=new THREE.Group(); hg.position.set(44,0,438); city.add(hg);
+    const base=sh(new THREE.Mesh(hipFrustumGeo(30,22,26,18,1.8),matChan));
+    base.position.y=.9; hg.add(base); edged(base);
+    let seed=5; const rnd=()=>{seed=(seed*48271)%2147483647;return seed/2147483647;};
+    const rocks=[];
+    for(let i=0;i<28;i++){
+      const a=rnd()*Math.PI*2, rr=Math.sqrt(rnd()), s=1.5+rnd()*2.1;
+      rocks.push({geo:jitterGeo(new THREE.IcosahedronGeometry(s,0),s*.3),
+        m:new THREE.Matrix4().makeTranslation(Math.cos(a)*rr*11,2.2+rnd()*4.2,Math.sin(a)*rr*7.6)
+          .multiply(new THREE.Matrix4().makeRotationY(rnd()*6.28))
+          .multiply(new THREE.Matrix4().makeScale(1,.75+rnd()*.55,1))});
+    }
+    const rm=new THREE.Mesh(mergeGeo(rocks),matChan); rm.castShadow=true; rm.receiveShadow=true; hg.add(rm);
+    box(hg,10,.8,8, 0,8.4,0, matChan);                        // 山顶石台（御景亭坐落其上，不浮在乱石上）
+    gardenPav({x:44,y:8.8,z:438,w:8,d:8,bodyH:3.4,double:false,roofH:3.6,baseH:.5,steps:false});
+    addCollider(44,438,15,11);
+  }
+  /* —— 延晖阁（西北，两层） —— */
+  {
+    const g=new THREE.Group(); g.position.set(-46,0,438); city.add(g);
+    const b=sh(new THREE.Mesh(hipFrustumGeo(20,14,18,12,1.4),matMarble)); b.position.y=.7; g.add(b); edged(b);
+    const b1=sh(new THREE.Mesh(hipFrustumGeo(16,10,15,9,4.4),matWallBig)); b1.position.y=1.4; g.add(b1); edged(b1);
+    const wr=sh(new THREE.Mesh(hipFrustumGeo(17.4,11.4,12.6,8.6,2.6,1.7),
+      roofFit(matGold,texRoof,17.4/18,.8))); wr.position.y=5.8; g.add(wr); edged(wr);
+    const b2=sh(new THREE.Mesh(hipFrustumGeo(12,8,11.4,7.4,3.6),matWall)); b2.position.y=5.8; g.add(b2); edged(b2);
+    const r=sh(new THREE.Mesh(hipRoofGeo(15,10,3.6,.58),matGold)); r.position.y=9.4; g.add(r); edged(r);
+    mergedBoxes(g,[
+      {w:8,h:2.6,d:.3,x:0,y:3.2,z:-5.1,m:matDoorStud},
+      {w:6,h:1.8,d:.3,x:0,y:7.7,z:-4.1,m:matDoor},
+    ]);
+    addCollider(-46,438,10,7);
+  }
+  /* —— 浮碧亭 / 澄瑞亭（东西水池，池上亭 + 石桥） —— */
+  const pondPav=(x)=>{
+    const water=new THREE.Mesh(new THREE.PlaneGeometry(15,19),matWater);
+    water.rotation.x=-Math.PI/2; water.position.set(x,.32,364); city.add(water);
+    mergedBoxes(city,[
+      {w:16.4,h:.7,d:.8,x:x,y:.45,z:354.2,m:matChan},
+      {w:16.4,h:.7,d:.8,x:x,y:.45,z:373.8,m:matChan},
+      {w:.8,h:.7,d:20.4,x:x-7.8,y:.45,z:364,m:matChan},
+      {w:.8,h:.7,d:20.4,x:x+7.8,y:.45,z:364,m:matChan},
+    ]);
+    mergedBoxes(city,[{w:2.4,h:.5,d:6,x:x,y:.5,z:357.6,m:matMarble}]);
+    gardenPav({x,y:.25,z:367,w:8,d:8,bodyH:3.4,double:true,roofH:3.4,baseH:.9,steps:false});
+    addCollider(x,364,8,10);
+  };
+  pondPav(48); pondPav(-48);
+  /* —— 绛雪轩 / 养性斋（南墙两侧，各合院小殿） —— */
+  const sideHall=(x)=>{
+    const g=new THREE.Group(); g.position.set(x,0,334); city.add(g);
+    const b=sh(new THREE.Mesh(hipFrustumGeo(18,11,17,10,1.2),matMarble)); b.position.y=.6; g.add(b); edged(b);
+    const bd=sh(new THREE.Mesh(hipFrustumGeo(14,8,13.4,7.4,4),matWallMuted)); bd.position.y=1.2; g.add(bd); edged(bd);
+    const r=sh(new THREE.Mesh(hipRoofGeo(18,11,3.4,.58),matGold)); r.position.y=5.2; g.add(r); edged(r);
+    mergedBoxes(g,[{w:6,h:2.4,d:.3,x:0,y:2.4,z:-4.2,m:matDoorStud}]);
+    addCollider(x,334,9,6);
+  };
+  sideHall(48); sideHall(-48);
+  /* —— 太湖石组 —— */
+  {
+    let seed=17; const rnd=()=>{seed=(seed*48271)%2147483647;return seed/2147483647;};
+    const items=[];
+    const cl=(cx,cz,n,sc)=>{
+      for(let i=0;i<n;i++){
+        const s=(1+rnd()*1.4)*sc;
+        items.push({geo:jitterGeo(new THREE.IcosahedronGeometry(s,0),s*.3),
+          m:new THREE.Matrix4().makeTranslation(cx+(rnd()-.5)*5*sc,.4+s*.5,cz+(rnd()-.5)*4*sc)
+            .multiply(new THREE.Matrix4().makeRotationY(rnd()*6.28))});
+      }
+    };
+    cl(-20,370,4,1); cl(20,414,4,1); cl(-18,452,4,1.1); cl(30,376,3,.9); cl(-30,420,3,.9);
+    const m=new THREE.Mesh(mergeGeo(items),matChan); m.castShadow=true; m.receiveShadow=true; city.add(m);
+  }
+}
 // —— 神武门
-{ const g=gate({x:0,z:480,w:64,d:26,h:12,towerH:6}); g.userData.poiName='神武门'; g.userData.world='gugong'; city.add(g); }
+{ const g=gate({x:0,z:480,w:64,d:26,h:12,towerH:6,doubleTower:true,dougong:true}); g.userData.poiName='神武门'; g.userData.world='gugong'; city.add(g); }
 // —— 角楼
 cornerTower(-376,-480); cornerTower(376,-480); cornerTower(-376,480); cornerTower(376,480);
 // —— 墙体
@@ -1929,25 +2170,54 @@ wall(-376,-480,-61.5,-480); wall(61.5,-480,376,-480);
 wall(-376,480,-32.5,480);   wall(32.5,480,376,480);
 wall(376,-480,376,-174.5);  wall(376,-125.5,376,480);
 wall(-376,-480,-376,-174.5);wall(-376,-125.5,-376,480);
-city.add(gate({x: 376,z:-150,w:48,d:20,h:10,rot:Math.PI/2,towerH:5}));
-city.add(gate({x:-376,z:-150,w:48,d:20,h:10,rot:Math.PI/2,towerH:5}));
+city.add(gate({x: 376,z:-150,w:48,d:20,h:10,rot:Math.PI/2,towerH:5,doubleTower:true,dougong:true}));
+city.add(gate({x:-376,z:-150,w:48,d:20,h:10,rot:Math.PI/2,towerH:5,doubleTower:true,dougong:true}));
 // —— 东六宫 / 西六宫（尺寸错落，宫各成院）+ 文华殿 / 武英殿
-[1,-1].forEach(s=>{
-  let vi=0;
-  for(const sx of [210,330]) for(const sz of [150,230,310]){
-    const wv=40+(vi%3)*5, dv=30+(vi%2)*6, rh=4.4+(vi%3)*.7;
-    city.add(palace({w:wv,d:dv,bodyH:7,tiers:1,roofH:rh,x:s*sx,z:sz,bm:matWallMuted}));
-    compound(s*sx, sz, wv, dv);
-    vi++;
-  }
-});
+// 原来每院只有一座正殿，航拍是"两排黄屋顶盒子"。现在合院加深（D=d+34）、前殿南移 8，
+// 后院补一座后殿 + 南墙宫门；12 个院子的附属建筑按材质合并，只多 4 个 draw call。
+{
+  const annex={bases:[],bodies:[],roofs:[],doors:[]};
+  const T=(x,y,z)=>new THREE.Matrix4().makeTranslation(x,y,z);
+  const rearRoof=hipRoofGeo(30,19,4.2,.58), gateRoof=hipRoofGeo(14,8,2.6,.58);
+  [1,-1].forEach(s=>{
+    let vi=0;
+    for(const sx of [210,330]) for(const sz of [150,230,310]){
+      const wv=40+(vi%3)*5, dv=30+(vi%2)*6, rh=4.4+(vi%3)*.7;
+      const cx=s*sx, D=dv+34;
+      city.add(palace({w:wv,d:dv,bodyH:7,tiers:1,roofH:rh,x:cx,z:sz-8,bm:matWallMuted}));
+      compound(cx, sz, wv, dv, {D,noGate:true});
+      const rz=sz+20;                                     // 后殿（24×13，比正殿低一档）
+      annex.bases.push({geo:boxGeo(28,1.2,17), m:T(cx,.6,rz)});
+      annex.bodies.push({geo:boxGeo(24,5.2,13), m:T(cx,3.8,rz)});
+      annex.roofs.push({geo:rearRoof, m:T(cx,6.4,rz)});
+      annex.doors.push({geo:boxGeo(5.6,2.8,.3), m:T(cx,2.6,rz-6.65)});
+      const gz=sz-D/2;                                    // 宫门（10×5，骑在南墙缺口上）
+      annex.bodies.push({geo:boxGeo(10,4,5), m:T(cx,2,gz)});
+      annex.roofs.push({geo:gateRoof, m:T(cx,4.05,gz)});
+      annex.doors.push({geo:boxGeo(3.6,3,.3), m:T(cx,1.5,gz-2.55)});
+      addCollider(cx, rz, 14, 8);
+      addCollider(cx-3.2, gz, 1.6, 2.5); addCollider(cx+3.2, gz, 1.6, 2.5);   // 宫门两侧墙，中间门洞可通行
+      vi++;
+    }
+  });
+  const mk=(items,mat,cast)=>{ const m=new THREE.Mesh(mergeGeo(items),mat);
+    m.castShadow=cast; m.receiveShadow=true; city.add(m); };
+  mk(annex.bases,matMarble,false);
+  mk(annex.bodies,matWallMuted,true);
+  mk(annex.roofs,matGold,true);
+  mk(annex.doors,matDoorStud,false);
+}
 const whd=palace({w:56,d:26,bodyH:9,tiers:1,roofH:6.5,x: 245,z:-235,dougong:true,shan:true}); whd.userData={poiName:'文华殿',world:'gugong'}; city.add(whd); compound( 245,-235,56,26);
 const wyd=palace({w:56,d:26,bodyH:9,tiers:1,roofH:6.5,x:-245,z:-235,dougong:true,shan:true}); wyd.userData={poiName:'武英殿',world:'gugong'}; city.add(wyd); compound(-245,-235,56,26);
-// —— 树木（御花园松柏 / 庭院阔叶）
-for(let gx=-3;gx<=3;gx++) for(let gz=0;gz<6;gz++){
-  const jx=(Math.sin(gx*12.9+gz*7.7)*.5+.5)*8-4, jz=(Math.cos(gx*5.3+gz*3.1)*.5+.5)*8-4;
-  if(gx===0&&gz===2) continue;
-  tree(gx*23+jx, 352+gz*20+jz, .9+((gx*7+gz)%3)*.18, 0);
+// —— 树木（御花园松柏沿园墙与殿亭之间；庭院阔叶）
+{
+  // 园内树位逐点给定：避开钦安殿台基（x±16/z380..404）、万春亭/千秋亭（x±26..42/z388..404）、
+  // 水池（x±40..56/z354..374）、堆秀山/延晖阁、中轴甬路
+  for(let z=334;z<=456;z+=13){ tree(61,z,1.14,0); tree(-61,z,1.12,0); }
+  [[24,372],[24,414],[-24,372],[-24,414],[24,444],[-24,444],
+   [-34,414],[34,414],[-34,378],[34,378],[-12,455],[12,455],[44,418],[-44,418],
+   [12,360],[-12,360],[12,420],[-12,420],[48,382],[-48,382],[48,422],[-48,422]]
+    .forEach(([x,z]) => tree(x, z, 1.15 + (Math.round((x + z) / 13) % 3) * .13, (Math.round(x / 23 + z / 17) % 7) === 0 ? 1 : 0));
 }
 [-152,152].forEach(sx=>[-165,-120,-78].forEach(z=>{ tree(sx,z,1.05,1); tree(sx+(sx>0?-14:14),z+20,.85,0); }));
 [-90,90].forEach(sx=>[150,210,270].forEach(z=>tree(sx,z,.8,1)));
@@ -1990,7 +2260,7 @@ for(let gx=-3;gx<=3;gx++) for(let gz=0;gz<6;gz++){
     {geo:new THREE.CylinderGeometry(.24,.15,.28,6),m:new THREE.Matrix4().makeTranslation(0,.16,0)}
   ]);
   const matPerson=new THREE.MeshStandardMaterial({color:0xffffff,roughness:.9,vertexColors:false});
-  const zones=[[-430,-378,-45,45],[-290,-178,-56,56],[88,97,31,54],[103,116,31,54],[88,97,-54,-31],[103,116,-54,-31],[136,300,-56,-46],[136,300,46,56],[330,372,-40,40],[412,464,-40,40]];
+  const zones=[[-430,-378,-45,45],[-290,-178,-56,56],[88,97,31,54],[103,116,31,54],[88,97,-54,-31],[103,116,-54,-31],[136,300,-56,-46],[136,300,46,56]];
   // 禁落区：内金水河/乾清门城台/台基边坡——落点重生成
   const rej=[[-62,62,-376,-348],[-30,30,86,114],[-48,-38,116,314],[38,48,116,314],[-28,28,116,126],[-28,28,-170,-158],[30,110,96,104],[-110,-30,96,104],[-28,28,74,88]];
   const bad=(x,z)=>rej.some(r=>x>=r[0]&&x<=r[1]&&z>=r[2]&&z<=r[3]);
@@ -2308,9 +2578,10 @@ function* gwBuildGen(){
   gw.add(terrain);
   // 山坡散树（双实例化：树干+皱冠，两处 draw call，随机姿态与色相）
   {
-    const N=650;
+    const N=950;
     // 松岭树形：三层圆锥 + 顶锥（剪影可读，实例色定暗绿）
-    const pineCols=[.03,.055,.08,.11];
+    // 冠顶点色原 L .03~.11 几乎全黑（乘实例色后夜昼都只剩黑点），抬到 .13~.25，靠实例色与档位材质色再压深
+    const pineCols=[.13,.17,.21,.25];
     const canG=mergeGeo([
       {geo:new THREE.ConeGeometry(1.5,1.8,7),m:new THREE.Matrix4().makeTranslation(0,2.1,0),
        color:new THREE.Color().setHSL(.36,.42,pineCols[0])},
@@ -2329,17 +2600,17 @@ function* gwBuildGen(){
     const M=new THREE.Matrix4(), C=new THREE.Color(), S=new THREE.Vector3();
     let seed=7; const rnd=()=>{seed=(seed*16807)%2147483647; return seed/2147483647;};
     let placed=0, guard=0;
-    while(placed<N&&guard++<9000){
+    while(placed<N&&guard++<16000){
       const x=-1150+rnd()*2300, z=-750+rnd()*1500;
       if(Math.abs(z-ridgeZ(x))<22) continue;
       const h=GW.gridH(x,z);
-      if(h<3||h>70) continue;
-      const s=.7+rnd()*1.2;
+      if(h<3||h>120) continue;                     // 上限从 70 放到 120：原来树只长在山脚，墙两侧的上半坡全光着
+      const s=.9+rnd()*1.1;
       S.set(s,s,s);
       const q=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),rnd()*6.28);
       M.compose(new THREE.Vector3(x,h-.1,z),q,S); imC.setMatrixAt(placed,M);
       M.compose(new THREE.Vector3(x,h-.1,z),q,S);  imT.setMatrixAt(placed,M);
-      imC.setColorAt(placed,C.setHSL(.33+rnd()*.045,.46+rnd()*.14,.2+rnd()*.12));   // 深绿实例色：原 L.72-.96 过浅，昼雾一褪即呈白色团块
+      imC.setColorAt(placed,C.setHSL(.33+rnd()*.045,.46+rnd()*.14,.3+rnd()*.14));   // 深绿实例色：原 L.72-.96 过浅昼雾褪成白团；但 L.2 在提亮山体后太黑，取中间
       imT.setColorAt(placed,C.setHSL(.07,.4,.22+rnd()*.08));
       placed++;
     }
@@ -2534,7 +2805,18 @@ function* gwBuildGen(){
       {w:.8,h:.8,d:4.6, x:-9.2,y:7.4,z:0, m:matGWLong},
       {w:.8,h:.8,d:4.6, x: 9.2,y:7.4,z:0, m:matGWLong},
     ]);
-    // 敌楼夜窗：暖光窗孔（夜档自发光，随窗光呼吸）
+    // 箭窗：四面各两孔，贴着塔身斜面（原来敌楼只有四个门洞，远看是一座石头亭子）
+    const fy=10.5-2.5*(19.5/(h+10));   // y=9.5 处的塔身半宽
+    mergedBoxes(g,[
+      {w:.9,h:1.6,d:.24, x:-3.2,y:9.5,z:-(fy+.1), m:matDoor},
+      {w:.9,h:1.6,d:.24, x: 3.2,y:9.5,z:-(fy+.1), m:matDoor},
+      {w:.9,h:1.6,d:.24, x:-3.2,y:9.5,z: (fy+.1), m:matDoor},
+      {w:.9,h:1.6,d:.24, x: 3.2,y:9.5,z: (fy+.1), m:matDoor},
+      {w:.24,h:1.6,d:.9, x:-(fy+.1),y:9.5,z:-3.2, m:matDoor},
+      {w:.24,h:1.6,d:.9, x:-(fy+.1),y:9.5,z: 3.2, m:matDoor},
+      {w:.24,h:1.6,d:.9, x: (fy+.1),y:9.5,z:-3.2, m:matDoor},
+      {w:.24,h:1.6,d:.9, x: (fy+.1),y:9.5,z: 3.2, m:matDoor},
+    ]);
     const winM=std({color:0x14171d,emissive:0xffb46a,emissiveIntensity:0}); LATTICE_GLOW.push(winM);
     for(const sx2 of [-1,1]) for(const k2 of [-1,1]){
       const ww=new THREE.Mesh(new THREE.BoxGeometry(.2,1.2,1.8),winM);
@@ -2551,33 +2833,54 @@ function* gwBuildGen(){
     return g;
   }
   const quarter=Math.floor(n/4),half=Math.floor(n/2),threeQ=Math.floor(n*3/4);
-  // 关城（起点大关）
+  // 关城（起点大关）：主城台 + 两层城楼 + 向关外伸出的 U 形瓮城
   {
     const p=P[2], g=new THREE.Group();
     const dir=new THREE.Vector3().subVectors(P[6],P[0]), yaw=Math.atan2(dir.x,dir.z);
     g.rotation.y=yaw; GW.guanYaw=yaw;   // 供 POI 标注做局部→世界换算
-    // footprint 四角（局部 ±23/±14 经 yaw 旋转）最低地形落位 + 下延 10
     const gyc=Math.cos(yaw), gys=Math.sin(yaw);
     const corner=(lx,lz)=>GW.gridH(p.x+lx*gyc+lz*gys, p.z-lx*gys+lz*gyc);
-    const gMinY=Math.min(corner(-23,-14),corner(23,-14),corner(-23,14),corner(23,14));
+    const gMinY=Math.min(corner(-21,-40),corner(21,-40),corner(-23,14),corner(23,14));
     g.position.set(p.x,gMinY,p.z);
     box(g,46,25,28, 0,2.5,0, matGWTower);   // 主体下延 10，鞍部不悬空
     box(g,9,10,3.4, 0,5,-14.2, matDoor,false);
     box(g,9,10,3.4, 0,5, 14.2, matDoor,false);
     box(g,26,1.4,20, 0,15.7,0, matGWLong,false);
+    // 城楼改两层：下檐（斜收）+ 上层 + 顶，原来单檐像一座门房
     const t=new THREE.Group(); t.position.y=15;
     box(t,30,7,16, 0,3.5,0, matGWTower);
-    const roof=new THREE.Mesh(hipRoofGeo(34,20,5.5,.55),matGoldG); roof.position.y=7; t.add(roof); edged(roof);
+    const skirt=new THREE.Mesh(hipFrustumGeo(36,22,22,12,2.8,1.7),matGoldG);
+    skirt.position.y=7; t.add(skirt); edged(skirt,edgeMatG);
+    box(t,18,3.4,9, 0,11.5,0, matGWTower);
+    const roof=new THREE.Mesh(hipRoofGeo(24,14,4.4,.55),matGoldG);
+    roof.position.y=13.2; t.add(roof); edged(roof,edgeMatG);
     g.add(t);
-    // 瓮城两翼（同样下延埋地）
-    box(g,20,20,12, -32,0,0, matGWTower);
-    box(g,20,20,12,  32,0,0, matGWTower);
+    // 瓮城：局部 -z 是关外（墙到此为止），两侧墙 + 带偏门的 front 墙围成 U 形
+    const wH=11.5, wT=2.6;
+    mergedBoxes(g,[
+      {w:wT,h:wH,d:26, x:-21,y:wH/2,z:-27, m:matGWTower},
+      {w:wT,h:wH,d:26, x: 21,y:wH/2,z:-27, m:matGWTower},
+      {w:25.5,h:wH,d:wT, x:-8.25,y:wH/2,z:-40, m:matGWTower},
+      {w:9.5, h:wH,d:wT, x:16.25,y:wH/2,z:-40, m:matGWTower},
+      {w:10,h:1.6,d:5, x:8,y:5.2,z:-40, m:matGWTower},        // 瓮城门洞过梁（下面留空可通行）
+    ]);
+    const gateRoof=new THREE.Mesh(hipRoofGeo(14,9,3,.58),matGoldG);
+    gateRoof.position.set(8,6.05,-40); g.add(gateRoof); edged(gateRoof,edgeMatG);
+    { const ms=[];   // 瓮城墙顶垛口（连续矮墙在远视距下读不出垛口）
+      for(let z=-39;z<=-15;z+=2.6){ ms.push({w:.9,h:.9,d:.5,x:-21,y:wH+.45,z,m:matGWMerlon},
+                                            {w:.9,h:.9,d:.5,x: 21,y:wH+.45,z,m:matGWMerlon}); }
+      for(let x=-19.5;x<=19.5;x+=2.6){ if(x>3.5&&x<12.5) continue;
+        ms.push({w:.5,h:.9,d:.9,x,y:wH+.45,z:-40,m:matGWMerlon}); }
+      mergedBoxes(g,ms);
+    }
     g.userData={poiName:'关城',world:'wall'};
-    // 关城碰撞（随朝向旋转的 AABB 近似）：主体挡在墙端，瓮城两翼封边
+    // 碰撞（随朝向旋转的 AABB 近似）：主城台 + 瓮城两侧墙 + front 墙两段，门洞留空
     const yc=Math.abs(Math.cos(yaw)), ys=Math.abs(Math.sin(yaw));
-    addCollider(p.x,p.z,(46*yc+28*ys)/2+1,(46*ys+28*yc)/2+1,'wall');
-    addCollider(p.x-32*yc,p.z+32*ys,(20*yc+12*ys)/2+.5,(20*ys+12*yc)/2+.5,'wall');
-    addCollider(p.x+32*yc,p.z-32*ys,(20*yc+12*ys)/2+.5,(20*ys+12*yc)/2+.5,'wall');
+    const lw=(lx,lz,hx,hz)=>addCollider(p.x+lx*gyc+lz*gys, p.z-lx*gys+lz*gyc,
+      hx*yc+hz*ys, hx*ys+hz*yc, 'wall');
+    lw(0,0,23,14);
+    lw(-21,-27,1.3,13); lw(21,-27,1.3,13);
+    lw(-8.25,-40,12.75,1.3); lw(16.25,-40,4.75,1.3);
     gw.add(g);
     GW.guanAddr=p.clone();
   }
@@ -2598,6 +2901,14 @@ function* gwBuildGen(){
     g.position.set(p.x,cMinY,p.z);   // 四角最低落位 + 下延 10
     const bbody=new THREE.Mesh(hipFrustumGeo(20,20,15.5,15.5,25),matGWTower);  // 几何底锚定(0..25)
     bbody.position.y=-10; g.add(bbody); edged(bbody,edgeMatG);                 // 下移 10：台身 -10..15，碗/火光露出塔顶
+    // 台身小门 + 四面箭窗（原来是一整块光台，只有顶上的火盆可读）
+    mergedBoxes(g,[
+      {w:2.6,h:3.4,d:.3, x:0,y:1.7,z:8.96, m:matDoor},
+      {w:.8,h:1.4,d:.24, x:-2.6,y:10.5,z:8.16, m:matDoor},
+      {w:.8,h:1.4,d:.24, x: 2.6,y:10.5,z:8.16, m:matDoor},
+      {w:.8,h:1.4,d:.24, x:-2.6,y:10.5,z:-8.16, m:matDoor},
+      {w:.8,h:1.4,d:.24, x: 2.6,y:10.5,z:-8.16, m:matDoor},
+    ]);
     box(g,13,2,13, 0,14,0, matGWLong,false);
     // 塔顶垛口围沿（烽火台顶部不再是一块光板；同材质 4 件合并）
     mergedBoxes(g,[
@@ -2798,11 +3109,11 @@ renderer.compile(scene,camera);
 
 /* ═══════════ POI 数据（两套世界） ═══════════ */
 const POIS_G=[
- {name:'午门',en:'MERIDIAN GATE',year:'明永乐十八年 · 1420',pos:[0,42,-480],view:{p:[52,14,-594],t:[-4,22,-482]},
+ {name:'午门',en:'MERIDIAN GATE',year:'明永乐十八年 · 1420',pos:[0,52,-480],view:{p:[0,22,-660],t:[0,20,-486]},
   desc:'紫禁城正门。居中向阳，位当子午，故名午门。城台上五凤楼巍然，明清颁朔、献俘大典在此举行，凯旋将士亦于此受俘。'},
  {name:'内金水桥',en:'GOLDEN WATER BRIDGES',year:'明代 · 内金水河',pos:[0,6,-362],view:{p:[-44,4.6,-398],t:[4,2.0,-364]},
   desc:'跨内金水河的五座汉白玉石桥，中为御路桥，两侧依次为王公桥、品级桥。民间有"暗合五德"之说。每一块栏板望柱均可放大细看。'},
- {name:'太和门',en:'GATE OF SUPREME HARMONY',year:'明永乐十八年 · 1420',pos:[0,32,-300],view:{p:[-44,12,-360],t:[4,16,-302]},
+ {name:'太和门',en:'GATE OF SUPREME HARMONY',year:'明永乐十八年 · 1420',pos:[0,40,-300],view:{p:[-40,8,-344],t:[0,15,-300]},
   desc:'外朝正门，明代"御门听政"之所。门前广场开阔数万平，白石栏板如雪，曾是明代常朝与重大典礼的仪仗之所。'},
  {name:'太和殿',en:'HALL OF SUPREME HARMONY',year:'1420 始建 · 1695 现存',pos:[0,52,-115],view:{p:[46,30,-236],t:[4,30,-116]},
   desc:'俗称金銮殿，现存规模最大的木结构大殿。重檐庑殿顶、檐角列脊兽（艺术化示意，模型以鸱吻示意；文献中"十瑞兽"为神话计数）。殿内金砖墁地、蟠龙藻井之下设髹金雕龙宝座，上悬"建极绥猷"匾（"正大光明"在乾清宫）——点击下方按钮可步入殿内。',inner:{p:[0,12.8,-124.5],t:[0,9.5,-103.5]}},
@@ -2818,18 +3129,18 @@ const POIS_G=[
   desc:'后三宫之一，取《易经》"天地交泰"之意。皇后千秋节受贺于此；清代二十五方皇帝宝玺珍藏殿中，铜壶滴漏与大自鸣钟分立两侧。'},
  {name:'坤宁宫',en:'PALACE OF EARTHLY TRANQUILITY',year:'明永乐十八年 · 1420',pos:[0,36,265],view:{p:[34,18,202],t:[-4,16,266]},
   desc:'明代皇后寝宫，取"地宁"之义。清代仿盛京旧制改为萨满祭祀之所，东暖阁设为大婚洞房。据载康熙、同治、光绪帝婚礼均曾以此为洞房。'},
- {name:'御花园 · 钦安殿',en:'IMPERIAL GARDEN',year:'明永乐十八年 · 1420',pos:[0,26,392],view:{p:[-36,20,330],t:[4,10,394]},
-  desc:'中轴北端宫廷园林，古柏藤萝、亭台奇石错落。钦安殿居中供玄天上帝，堆秀山御景亭为重阳登高之处，连理柏见证六百年风雨。'},
- {name:'神武门',en:'GATE OF DIVINE PROWESS',year:'明永乐十八年 · 1420',pos:[0,38,480],view:{p:[-42,16,576],t:[2,20,482]},
+ {name:'御花园 · 钦安殿',en:'IMPERIAL GARDEN',year:'明永乐十八年 · 1420',pos:[0,24,392],view:{p:[-82,34,310],t:[6,8,406]},
+  desc:'中轴北端宫廷园林：钦安殿居中供玄天上帝，东西万春亭·千秋亭对置，东北堆秀山御景亭为重阳登高之处，西北延晖阁，东西浮碧亭·澄瑞亭跨池而建；红墙围合，南坤宁门、北顺贞门，古柏与太湖石错落。'},
+ {name:'神武门',en:'GATE OF DIVINE PROWESS',year:'明永乐十八年 · 1420',pos:[0,38,480],view:{p:[40,7,568],t:[0,14,482]},
   desc:'紫禁城北门，旧设钟鼓晨昏报时。1925 年故宫博物院成立时于门上悬挂"故宫博物院"匾额，今为观众参观出口，门外即是景山。'},
- {name:'角楼',en:'CORNER TOWER',year:'明永乐十八年 · 1420',pos:[376,32,-480],view:{p:[492,16,-592],t:[378,20,-482]},
+ {name:'角楼',en:'CORNER TOWER',year:'明永乐十八年 · 1420',pos:[376,32,-480],view:{p:[428,12,-538],t:[376,16,-480]},
   desc:'城墙四隅各有一座角楼，三重檐、民间称"九梁十八柱七十二条脊"的精巧木构（不同计数口径有出入，模型为艺术化示意），轮廓如亭如阁，是紫禁城最上镜的标志之一。'},
- {name:'檐角斗拱',en:'DOUGONG CLOSE-UP',year:'重檐庑殿 · 檐角',pos:[26,31,-126],view:{p:[44,32,-100],t:[26,30,-126]},
+ {name:'檐角斗拱',en:'DOUGONG CLOSE-UP',year:'重檐庑殿 · 檐角',pos:[26,31,-126],view:{p:[46,38,-84],t:[27,29,-104]},
   desc:'太和殿上层檐角特写：垂脊列脊兽（模型以鸱吻示意，艺术化数字示意非测绘复原），双层斗拱出跳承托檐口，飞檐翘角指天。琉璃瓦垄沿举折曲线铺展，檐下彩画枋层层出挑。'},
  {name:'陈设 · 铜炉',en:'BRONZE CENSERS',year:'鎏金陈设 · 台基之上',pos:[30,13,-143],view:{p:[16,13,-156],t:[30,10,-143]},
   desc:'台基南沿陈设一组：三足双耳鎏金香炉、昂首铜龟与铜鹤（大典焚香之用）、防火鎏金铜缸。日晷居东南、嘉量居西南，皆为国之量器。'},
- {name:'东六宫院落',en:'EASTERN PALACES',year:'明永乐 · 内廷东六宫',pos:[210,12,190],view:{p:[166,18,138],t:[210,9,190]},
-  desc:'嫔妃居所，一宫一院、围合而居。朱红院墙、月门石拱，内设正殿配殿。与西六宫对称分布于后三宫两翼，合称"东西六宫"。'},
+ {name:'东六宫院落',en:'EASTERN PALACES',year:'明永乐 · 内廷东六宫',pos:[210,16,190],view:{p:[160,20,108],t:[214,9,178]},
+  desc:'嫔妃居所，一宫一院、围合而居。朱红院墙、宫门石阶，院内前后两进正殿（后殿体量略小）。与西六宫对称分布于后三宫两翼，合称"东西六宫"。'},
  {name:'文华殿',en:'HALL OF LITERARY GLORY',year:'明永乐 · 外朝东路',pos:[245,14,-235],view:{p:[208,14,-208],t:[245,10,-235]},
   desc:'外朝东路殿宇，明代多作太子讲学/经筵之所，清代经筵讲学之所（太子居所屡有变动，非固定东宫）。北侧文渊阁为皇家藏书楼，清代《四库全书》曾藏于此。'},
  {name:'武英殿',en:'HALL OF MARTIAL VALOR',year:'明永乐 · 外朝西路',pos:[-245,14,-235],view:{p:[-208,14,-208],t:[-245,10,-235]},
@@ -2844,7 +3155,7 @@ function buildPOIS_W(){
  return [
  {name:'关城',en:'FORTRESS GATE',year:'明弘治十八年 · 1505',pos:[GW.guanAddr?.x||P0.x,(GW.guanAddr?.y||0)+34,GW.guanAddr?.z||0],
   view:{p:[GW.guanAddr?.x-90||-90,(GW.guanAddr?.y||0)+55,GW.guanAddr?.z-150||-150],t:[GW.guanAddr?.x||0,(GW.guanAddr?.y||0)+12,GW.guanAddr?.z||0]},
-  desc:'长城东端关隘（模型以单墙段示意瓮城两翼，非完整闭环），城楼扼守隘口。古人云"居庸之险不在关而在八达岭"，此即八达岭之门户。艺术化数字示意。'},
+  desc:'长城东端关隘：城台前伸出 U 形瓮城，偏门迎敌，两层城楼扼守隘口。古人云"居庸之险不在关而在八达岭"，此即八达岭之门户。艺术化数字示意。'},
  {name:'敌楼 · 北四楼',en:'WATCH TOWER',year:'明隆庆三年 · 1569',pos:GW.towers[0]?(GW.towers[0].pos.toArray()):[0,40,0],
   view:{p:[(GW.towers[0]?.pos.x||0)+70,(GW.towers[0]?.pos.y||40)+30,(GW.towers[0]?.pos.z||0)+70],t:GW.towers[0]?.pos.toArray()||[0,20,0]},
   desc:'空心敌楼，上下两层，可驻兵数十、储存粮械。隆庆至万历年间大量增建，为长城防御体系的中坚。'},
@@ -2899,7 +3210,7 @@ const POI_EN={
   "Four corner towers, popularly 'nine beams, eighteen columns and seventy-two ridges' (folk count, varies by method) — the most photographed silhouette (artistic interpretation).",
   "A close-up of the upper eave: ridge beasts along the hip ridge (artistic; model shows chiwen), double-tier dougong brackets carrying the eave, and glazed tiles laid along the concave roof curve.",
   "Terrace furnishings: a three-legged gilt censer, bronze turtle and crane incense burners for ceremony smoke, and gilded fire-fighting vats. The sundial stands east, the grain measure west.",
-  "Consorts' residences — one walled courtyard per palace with its moon-gate, mirrored by the Six Western Palaces to form the 'three palaces, six courts'.",
+  "Consorts' residences — one walled courtyard per palace with its gatehouse and two halls (front and rear), mirrored by the Six Western Palaces to form the 'three palaces, six courts'.",
   "Eastern Outer Court hall: used chiefly for the heir apparent's studies and classicist lectures under the Ming (the prince's household moved often), and for the classicist academy under the Qing; famed for its crab-apple blossoms.",
   "Western Outer Court hall: an imperial side hall for fasting and audiences under the Ming; under the Qing the Imperial Printing Office, whose 'Wuying editions' are famed; Li Zicheng's brief enthronement rite was held here in 1644.",
   "Wanchun Pavilion crowns Jingshan Hill, the highest point of the central axis — from here the golden roofs of the Forbidden City spread at your feet."
@@ -2922,9 +3233,9 @@ const WORLDS={
     sub:'FORBIDDEN CITY · 3D DIGITAL TWIN',
     geo:'E 116.397° · N 39.917° · 北京中轴线',
     views:{'全景':{p:[430,330,660],t:[0,0,-30]},'俯瞰':{p:[.5,730,.5],t:[0,0,0]},
-      '午门':{p:[0,24,-562],t:[0,22,-480]},'三大殿':{p:[30,38,-206],t:[0,24,-112]},
-      '后三宫':{p:[0,30,92],t:[0,14,205]},'御花园':{p:[0,26,338],t:[0,10,390]},
-      '角楼':{p:[432,30,-540],t:[376,14,-480]},'殿内景':{p:[0,12.8,-124.5],t:[0,9.5,-103.5]},
+      '午门':{p:[0,22,-660],t:[0,20,-486]},'三大殿':{p:[30,38,-206],t:[0,24,-112]},
+      '后三宫':{p:[0,30,92],t:[0,14,205]},'御花园':{p:[0,20,306],t:[0,7,404]},
+      '角楼':{p:[424,24,-536],t:[376,18,-480]},'殿内景':{p:[0,12.8,-124.5],t:[0,9.5,-103.5]},
       '晨光金顶':{p:[2,84,592],t:[0,18,-80],light:'dawn',golden:true}}},
   wall:{label:'万里长城',group:gw,pois:POIS_W,slab:()=>fx.slabW,
     sub:'GREAT WALL · 3D DIGITAL TWIN',
@@ -3063,7 +3374,16 @@ function applyLights(name){
   bloom.enabled=state.shadow&&L.bloom>.3;   // 昼档无输出直接关；「光影」关闭时 bloom 整关——月光照亮的大面积台基/墙体在真机 HDR 上超阈值，bloom 会把整片晕成光柱光带（用户实拍 r20.4），平光夜景必须连泛光一起关
   rim.intensity=L.rim;                                     // 青色轮廓补光是夜景语言，昼档必须关掉大半
   fx.clouds.forEach(c2=>c2.material.opacity = name==='day'?.5:(name==='dawn'?.38:.05));   // 云分档（夜近隐）
-  if(fx.terrainMat) fx.terrainMat.emissiveIntensity = name==='day' ? 0 : (name==='dawn' ? .3 : .42);  // 昼间关地形自发光（长城山体夜景不再泛灰）
+  if(fx.terrainMat){   // 昼间关地形自发光（长城山体夜景不再泛灰）
+    fx.terrainMat.emissiveIntensity = name==='day' ? 0 : (name==='dawn' ? .3 : .42);
+    // 顶点色是为数字孪生夜景压暗的：直射光下整片山读成炭黑，按档位抬反照率并略加暖
+    fx.terrainMat.color.setRGB(name==='day'?4.0:name==='dawn'?2.2:1.12,
+                               name==='day'?3.8:name==='dawn'?2.05:1.12,
+                               name==='day'?3.3:name==='dawn'?1.8:1.12);
+  }
+  matGWTree.color.setRGB(name==='day'?1.55:name==='dawn'?1.25:1,
+                         name==='day'?1.6:name==='dawn'?1.3:1,
+                         name==='day'?1.35:name==='dawn'?1.15:1);   // 松林随档位提亮（冠顶点色已抬到 .13~.25）
   // 地面石材分档着色：昼=青砖本色，晨=暖灰，夜=冷蓝压暗（保住数字孪生夜景）
   // 昼档墁砖底色：0xd6d0c4 近白，大视距下整片中轴广场糊成一块白板，青砖缝全看不见。
   // 压到中性暖灰（真实条石/青砖在正午的观感），砖缝对比才留得住
@@ -3765,6 +4085,7 @@ window.__dbg=()=>({aw:activeWorld,wk:Object.keys(WORLDS),has:!!WORLDS[activeWorl
   rings:fx.rings[0].visible, glint:+fx.glints[0].material.opacity.toFixed(3)});
 window.__finishGrow=()=>{ growing=false; city.scale.y=1; clock.getDelta(); renderer.shadowMap.needsUpdate=true; };
 window.__views=()=>WORLDS[activeWorld].views;   // 调试钩子：当前世界视点目录（坐标直读）
+window.__poiviews=()=>WORLDS[activeWorld].pois.map(p=>({v:p.view,inner:p.inner||null}));   // 调试钩子：POI 机位表（无头截图直接摆位，免跑飞行动画）
 window.__light=()=>({lm:lightMode,hemi:hemi.intensity,amb:amb.intensity,sunI:+sun.intensity.toFixed(3),
   sunC:'#'+sun.color.getHexString(),expo:renderer.toneMappingExposure,
   fogN:scene.fog.near,fogF:scene.fog.far,
